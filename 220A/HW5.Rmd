@@ -1,0 +1,529 @@
+---
+title: "HW5"
+author: "Jordan Garrett"
+date: "12/4/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(faraway)
+library(tidyverse)
+library(ggplot2)
+library(psych)
+library(GGally)
+library(MASS)
+library(car)
+library(lava)
+library(boot)
+library(latex2exp)
+library(glmnet)
+library(leaps)
+library(cowplot)
+library(contrast)
+library(reshape)
+library(DescTools)
+```
+
+# 1)
+Exploratory Data Analysis:
+```{r}
+data(divusa)
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+pairs(divusa, diag.panel = panel.hist, lower.panel=panel.smooth,
+      upper.panel = panel.cor, cex.labels=1,font.labels = 2)
+```
+Step-wise Analysis:
+```{r}
+step.model1 <- step(lm(divorce ~ ., data = divusa), direction = 'both')
+```
+
+LASSO: 
+```{r}
+#center and scale to mean of 0 and sd of 1
+scaled.df1 <- as.data.frame(scale(divusa))
+summary(scaled.fit <- lm(divorce ~ . , data = scaled.df1))
+
+fit.1 <- lm(divorce ~ ., data = divusa)
+
+set.seed(800)
+X <- model.matrix(scaled.fit)[,-1]
+fit.lasso1 <- glmnet(X, scaled.df1$divorce, lambda.min=0, nlambda=101, alpha=1)
+plot(fit.lasso1, xvar="lambda", xlim=c(-8,0), ylim = c(-1,2))
+text(-7,coef(fit.lasso1)[c(3:5),length(fit.lasso1$lambda)]+0.1,labels=colnames(X)[2:4]) 
+text(-7,coef(fit.lasso1)[c(2,6,7),length(fit.lasso1$lambda)]-0.1,
+     labels=colnames(X)[c(1,5,6)]) 
+fit.lasso.cv1 <- cv.glmnet(X, scaled.df1$divorce, lambda.min=0, nlambda=101)
+abline(v=log(fit.lasso.cv1$lambda.min), col="red")
+mtext("CV estimate", side=1, at=log(fit.lasso.cv1$lambda.min), cex=.6)
+plot(fit.lasso.cv1)
+```
+Mallows Cp:
+```{r}
+a <- regsubsets(divorce ~ ., data=divusa,method="exhaustive") 
+rs <- summary(a)
+```
+Cross Validation:
+```{r}
+CV_error <- cv.glm(divusa, glm(divorce ~ unemployed + femlab + 
+                                 marriage + birth, data=divusa), K = 10)$delta
+```
+Plotting measures of model quality for seleciton:
+```{r}
+n <- nrow(divusa)
+AIC <- n*log(rs$rss) + 2*(2:7)
+BIC <- n*log(rs$rss) + log(n)*(2:7)
+par(mfrow=c(2,2))
+plot(2:7,AIC,xlab="Number of parameters",ylab="AIC")
+plot(2:7,BIC,xlab="Number of parameters",ylab="BIC")
+plot(2:7,rs$cp,xlab="Number of parameters",ylab="Cp statistic")
+abline(0,1)
+plot(2:7, rs$adjr2, xlab="Number of parameters", ylab="Adjusted R-square")
+```
+The following model was selected based off of the quesiton's selection criterion:
+
+$$
+divorce_i = -0.22(year_i) + 0.85(femlab_i) + 0.16(marriage_i) - 0.11(birth_i) - 0.04(military_i)
+$$
+This model had the lowest AIC score (`r round(AIC(step.model1),2)`), yeilded the smallest adjusted cross-validation error (3.08), explained the highest amount of variation $Adj. R^2 = 0.93, F_{5,71} = 199.7, p < 2.2e-16$, had the smallest Mallow's cp statistic (`r round(rs$cp[5],2)`), and each of its regression coefficients were signifcant for a $\alpha = 0.001$ threshold (except for miliarty, which was significant at $p < 0.01$). It is worth mentioning that if the response variable was tranformed to $divorce^{-1}$ that a much better model is converged upon, but it was not chosen since the quality of model diagnostics was not included in the selection criteria. 
+
+# 2)
+```{r}
+data("prostate")
+```
+
+```{r}
+ggscatmat(prostate, columns = -6, alpha=0.8)
+```
+
+```{r}
+prostate_fit <- lm(lpsa ~ ., data = prostate)
+```
+
+Some covariates are fairly correlated with one another, so LASSO regression was implemented.
+```{r}
+set.seed(800)
+X <- model.matrix(prostate_fit)[,-1]
+fit.lasso <- glmnet(X, prostate$lpsa, lambda.min=0, nlambda=101, alpha=1)
+plot(fit.lasso, xvar="lambda", xlim=c(-7.5,0))
+text(-7,coef(fit.lasso)[-1,length(fit.lasso$lambda)],labels=colnames(X),cex=0.8) 
+fit.lasso.cv <- cv.glmnet(X, prostate$lpsa, lambda.min=0, nlambda=101)
+abline(v=log(fit.lasso.cv$lambda.min), col="red")
+mtext("CV estimate", side=1, at=log(fit.lasso.cv$lambda.min), cex=.6)
+plot(fit.lasso.cv)
+```
+
+```{r}
+step.model_prostate <- step(prostate_fit, direction = "both")
+summary(step.model_prostate)
+```
+
+# 3)
+```{r}
+murder <- read.csv("/Users/owner/Desktop/PSTAT_220A/HW5_3.txt",sep=" ", header=T)
+murder <- murder[-5]
+```
+
+```{r}
+summary(murder.fit <- lm(y ~ x2 + x3, data = murder))
+```
+```{r}
+new_point <- data.frame("x1" = 150,000, "x3"=10, "x2"=9)
+p2 <- predict(murder.fit, newdata=new_point, se=T,interval="prediction")
+p2
+```
+
+# 4)
+```{r}
+birth.weight <- data.frame("M.R."=c(2582,2946,2280,2913,2310),
+                           "M.U."=c(3347,3099,3186,2857,2937),
+                           "S.R."=c(2572,2571,2300,2584, NA),
+                           "S.U."=c(2952,2348,2286,2691,2938))
+
+birth.weight.an <- na.omit(melt(birth.weight))
+colnames(birth.weight.an) <- c("Area","Weight")
+birth.weight.an$Area <- factor(birth.weight.an$Area,levels = c("M.R.","M.U.",
+                                                                 "S.R.","S.U."))
+birth.weight.an$ID <- c(1:nrow(birth.weight.an))
+```
+
+## a)
+```{r}
+ggplot(birth.weight.an, aes(x = Area, y = Weight, fill = Area)) +
+  geom_boxplot(outlier.color = 'red')  + labs(title="Boxplot of Weight by Area",
+        x ="Area", y = "Weight (grams)") +
+  stat_summary(fun.y=mean, fun.args = c(trim = 0, na.rm=F),
+               geom="point", shape=4, size=5, color="blue") + 
+  theme(legend.position = "none", text = element_text(size = 15))
+```
+I anticipate that there will be some differences in the means (represented by a blue "X") between the birth weight of babies in each of the areas shown in the box plot. The mean and spread of the distribution for babies born in the Urban Midwest area seems to be the most likely to be significantly different from all other locations.
+
+## b)
+```{r}
+summary(birth_fit1 <- aov(Weight ~ Area, data = birth.weight.an))
+```
+There is a significant main effect of area. 
+```{r}
+par(mfrow=c(2,2))
+plot(birth_fit1, which = c(1,2,4))
+influencePlot(birth_fit1)
+```
+Distribution of standardized residuals appears as though it might be non-normal. Further, some of the residuals appear to have a high Cook's distance and leverage. A Box-Cox test was conducted to dtermine if any transformations were needed, and an outlier test was performed to detect highly influential points.
+```{r}
+outlierTest(birth_fit1)
+```
+No outliers detected in the model's residualsd under a Bonferroi corrected threshold of $\alpha$ = 0.05. 
+
+```{r}
+boxcox(birth_fit1, lambda = seq(-6,6,.2))
+```
+Box Cox 95% CI includes 1, so no tranformation necessary.
+
+
+```{r}
+library(multcomp)
+```
+
+```{r}
+birth.bonCI <- PostHocTest(birth_fit1,method = "bonferroni")
+birth.bonExtrac <- unite(as.data.frame(round(cbind(birth.bonCI[["Area"]][,2],
+                                                   birth.bonCI[["Area"]][,3]),2)),
+                         "CI",sep = " , ")$CI
+birth.scheffeCI <- PostHocTest(birth_fit1,method = "scheffe")
+birth.scheffeExtrac <- unite(as.data.frame(round(cbind(birth.scheffeCI[["Area"]][,2],
+                                                   birth.scheffeCI[["Area"]][,3]),2)),
+                             "CI",sep = " , ")$CI
+
+birth.tukCI <-TukeyHSD(birth_fit1)
+birth.tukExtrac <- unite(as.data.frame(round(cbind(birth.tukCI[["Area"]][,2],
+                                                   birth.tukCI[["Area"]][,3]),2)),
+                             "CI",sep = " , ")$CI
+
+birth.CIs <-  data.frame("Mean Diff" = birth.bonCI[['Area']][,1],
+                         "Bonferonni" = birth.bonExtrac,
+                         "Tukey" = birth.tukExtrac,
+                         "Scheffe" = birth.scheffeExtrac,
+                         "CI Level" = rep(0.95,length(birth.bonCI[['Area']][,1])))
+birth.CIs
+```
+Since we have unequal $n_{i}$ and we did not have any planned comparisons, then we have to compare Bonferonni, Tukey and Scheffe confidence intervals. The method that yields the smallest confidence intervals is the one we used for pairwise comparisons. For all of the possible pairwise comparisons, the Tukey method yeilded the smallest confidence intervals.
+```{r}
+plot(TukeyHSD(birth_fit1))
+se <- function(x) { sd(na.omit(x))/sqrt(length(na.omit(x))) }
+sum.stats <- group_by(birth.weight.an, Area) %>% summarise(mean.weight = mean(Weight), 
+                                                           se.weight = se(Weight))
+```
+Tukey pairwise comparisons indicate that the average birth weight (grams) between babies in Midwest Urban ($M =$ `r sum.stats$mean.weight[2]` $\pm$ `r round(sum.stats$se.weight[2],2)`) areas are significantly different from those born in either Southern Rural ($M =$ `r sum.stats$mean.weight[3]` $\pm$ `r round(sum.stats$se.weight[3],2)`) or Midwest Rural areas ($M =$ `r sum.stats$mean.weight[1]` $\pm$ `r round(sum.stats$se.weight[1],2)`). All other pairwise comparisons with Southern Urban areas ($M =$ `r sum.stats$mean.weight[4]` $\pm$ `r round(sum.stats$se.weight[4],2)`) were nonsignificant. 
+
+## c)
+```{r}
+UvR_comp <- contrast(lm(Weight ~ Area, data=birth.weight.an), 
+         list(Area=as.factor(c("M.U.","S.U."))), 
+         list(Area=as.factor(c("M.R.","S.R."))), 
+         type="average")
+
+MvS_comp <- contrast(lm(Weight ~ Area, data=birth.weight.an), 
+         list(Area=as.factor(c("M.U.","M.R."))), 
+         list(Area=as.factor(c("S.U.","S.R."))), 
+         type="average")
+
+quick.CI <- function(con,k){
+  
+  crit.bon <- qt(df=con$df,0.05/2/k,lower.tail=F)
+  con.bon.upper <- con$Contrast + crit.bon*con$SE
+  con.bon.lower <- con$Contrast - crit.bon*con$SE
+  con.bon.band <- paste(round(con.bon.lower,2),round(con.bon.upper,2), sep = " , ")
+  
+  g <- length(con$X) - 1
+  crit_scheffe <- qf(0.05,g,con$df,lower.tail = F)
+  upper_scheffe <- con$Contrast + sqrt(g*crit_scheffe)*con$SE
+  lower_scheffe <- con$Contrast - sqrt(g*crit_scheffe)*con$SE
+  scheffe.ci <- paste(round(lower_scheffe,2),round(upper_scheffe,2), sep = " , ")
+  
+  return(c(con.bon.band,scheffe.ci))
+}
+
+prior_comps <- data.frame("Pair"=c("Urban-Rural","Midwest-Southern"),
+                          "Mean Diff"= c(UvR_comp$Contrast,MvS_comp$Contrast),
+                          "Bonferonni" = c(quick.CI(UvR_comp,2)[1],quick.CI(MvS_comp,2)[1]),
+                          "Scheffe"= c(quick.CI(UvR_comp,2)[2],quick.CI(MvS_comp,2)[2]))
+prior_comps
+
+```
+I decided to use the bonferonni correction method for multiple comparisons since it resulted in a smaller confidence range. There was a significant difference between the mean weight of babies in Urban areas ($M =$ 2864.1 $\pm$ 107.55) when compared to Rural areas ($M =$ 2562 $\pm$ 81.94), whose bonferonni 95% CI was [9.26,605.99]. In contrast, there were no significant differences between the mean weight of babies in Midwestern locations ($M =$ 2845.7 $\pm$ 112.09) when compared to Southern locations ($M =$ 2582.44, $\pm$ 83.14), whose bonferonni 95% CI was [-27.54,569.19]. 
+
+## d)
+I would use the Scheffe's method to further test the relationship between birth weights of Urban and Rural areas, since it is more conservative, thus it attenuates the potential of committing a Type I error more so than the Bonferonni method. According to Scheffe's method, the difference between the means of Urban and Rural birth weigths is nonsignificant (95% CI [-68.7,683.95]).    
+
+
+# 5)
+
+An appropriate model for this problem would be:
+
+$$
+y_{ijk} = \mu + \alpha_i + \beta_j + (\alpha\beta)_{ij} + \epsilon_{ijk}
+$$
+where $\alpha$ represents the main effect of poison, $\beta$ represents the main effect of treatment, i is the level of poisons ($i = 1,2,3$), j is the levels of treatments ($j = 1,2,3,4$), $(\alpha\beta)_{ij}$ is the interaction between poison $i$ and treament $j$, $k$ is a specific observation ($k = 1,2,...N$) , and $\epsilon$ are random errors. The levels of poison and treatment are both fixed, thus this is a fixed-effects model. The model assumes the following:
+
++ The populations from which the samples were acquired are normal.
++ Samples are independent from one another
++ Constant variance of the sampled populations
+
+## b)
+```{r}
+poison.df <- data.frame("SurvivalT" = c(31,45,46,43,
+                                        36,29,40,23,
+                                        22,21,18,23,
+                                        82,110,88,72,
+                                        92,61,49,124,
+                                        30,37,38,29,
+                                        43,45,63,76,
+                                        44,35,31,40,
+                                        23,25,24,22,
+                                        45,71,66,62,
+                                        56,102,71,38,
+                                        30,36,31,33),
+                        "Treatment" = c(rep(1,12),rep(2,12),rep(3,12),rep(4,12)),
+                        "Poison"=rep(c(rep(1,4),rep(2,4),rep(3,4)),4))
+
+poison.df$Treatment <- factor(poison.df$Treatment, labels= c("B1","B2","B3","B4"))
+poison.df$Poison <- factor(poison.df$Poison, labels = c("A1","A2","A3"))
+```
+
+```{r}
+cell_summary <- group_by(poison.df,Poison,Treatment) %>% 
+  summarise(mean.SurvT = mean(SurvivalT),
+            sd.SurvT = sd(SurvivalT))
+```
+
+```{r}
+ggplot(cell_summary, aes(x=mean.SurvT,y=sd.SurvT)) + 
+  geom_point() + labs(x="Cell Means",y="Cell Standard Deviations",
+                      title="Cell Mean vs Standard Deviations")+
+  geom_smooth(method="loess",se=F,color="red",linetype="dashed")
+```
+The plot suggests that the assumption of constant variance across sampled populations is violated. Increases in cell mean correpond to increases in cell standard deviation.
+
+## c)
+```{r}
+logtrans(sd.SurvT ~ mean.SurvT, alpha = seq(-1,19,5), data = cell_summary)
+```
+This plot does corroborate the previously stated conclusion of non-constant variance being violated. Since 1 is within the 95% CI of alpha, then no transformation is required for the logarithmic model.
+
+```{r}
+boxcox(SurvivalT ~ Treatment * Poison, lambda=seq(-1.4,0,0.1), data=poison.df)
+```
+Box-Cox suggests that a transformation of $survival$ $time^{-1}$ is required. This transformation is what will be used for subsequent analysis. 
+
+## d)
+```{r}
+interaction.plot(poison.df$Treatment,poison.df$Poison,poison.df$SurvivalT,
+                 xlab="Treatment",ylab="Mean Survival Time (1/10 of hour)",
+                 trace.label = "Poison",cex=0.5,xpd=1)
+interaction.plot(poison.df$Poison,poison.df$Treatment,poison.df$SurvivalT,
+                 xlab="Poison",ylab="Mean Survival Time (1/10 of hour)",
+                 trace.label = "Treatment")
+```
+Looking at the first figure, it is clear that there is a main effect of poison, as indicated by the large difference between between treatment means for poison A3 compared to A1 & A2. Figure 2 suggests a main effect of treatement, with differences between treatment B2 & B4 compared to B1 & B3 being the greatest. Both plots also indicate that an interaction is present, since the lines are not perfectly parrallel. 
+
+
+## e)
+```{r}
+summary(poison_fit <- aov(I(SurvivalT^-1) ~ Treatment * Poison, data = poison.df))
+```
+
+## f)
+$$
+H_0: (\alpha\beta)_{ij} = 0 \\
+$$
+where $\alpha$ is the effect of poison, $\beta$ is the effect of treatment, $\alpha\beta$ is their interaction. ($i$ = 1,2,3) for the levels of poison, while ($j$ = 1,2,3,4) for the levels of treatment. Differences in survival time between types of poison was not dependent on the type of treatment received($F_{6, 564} = 1.09, p = 0.387$). It is appropriate to interpret the main effects of poison and treatment. If the interaction term was significant, then it would only be appropirate to interpret the simple main effects.
+
+## g)
+$$
+H_0: \qquad poison_{i} = 0 \quad for \quad (i = 1,2,3) \\
+\quad \quad \quad \quad treatment_{j} = 0 \quad for \quad (j = 1,2,3,4)
+$$
+There was both a significant main effect of poison type on survival time ($F_{2,56} = 72.64, p = 2.31e-13$) and a significant main effect of treatment type on survival time ($F_{3,56} = 28.34, p = 1.38e-09$). 
+
+
+# 6)
+## a)
+$$
+earning_{ijk} = subject_i + degree_j + (subject * degree)_{ij} + \epsilon_{ijk}
+$$
+```{r}
+pay <- c(1.7,1.9,2.5,2.3,2.6,2.4,2.7,2.8,2.5,2.6,
+              1.8,2.1,2.7,2.4,2.6,2.4,2.5,2.9,3.0,2.8,2.7,2.3,2.8,
+              2.5,2.7,2.9,2.5,2.6,2.8,2.7,2.9,3.5,3.3,3.6,3.4,3.7,3.6,
+              3.7,3.8,3.9,3.3,3.4,3.3,3.5,3.6)
+subject <- c(1,1,2,2,2,2,3,3,4,4,
+             1,1,2,2,2,2,2,3,3,3,3,4,4,
+             rep(1,8),2,2,2,2,rep(3,5),rep(4,5))
+degree <- c(rep(1,10),rep(2,13),rep(3,22))
+
+earnings.df <- data.frame(cbind(pay*1000,subject,degree))
+colnames(earnings.df) <- c("Earnings","Subject","Degree")
+
+earnings.df$Subject <- factor(earnings.df$Subject,labels = c("Hum",
+                                                       "Soc",
+                                                       "Engin",
+                                                       "Manage"))
+earnings.df$Degree <- factor(earnings.df$Degree,labels = c("Bach",
+                                                       "Mast",
+                                                       "Doc"))
+```
+
+Set to zero condition
+```{r}
+options(contrasts=c("contr.treatment","contr.poly"))
+model.matrix(lm(Earnings ~ Subject * Degree, data = earnings.df))
+```
+
+Sum to zero condition
+```{r}
+options(contrasts=c("contr.sum","contr.poly"))
+model.matrix(lm(Earnings ~ Subject * Degree, data = earnings.df))
+```
+
+## b)
+```{r}
+options(contrasts=c("contr.treatment","contr.poly"))
+interaction.plot(earnings.df$Subject,earnings.df$Degree,earnings.df$Earnings,
+                 xlab="Subject",ylab="Mean Earnings (dollars)",
+                 trace.label = "Degree",cex=0.5,xpd=1)
+interaction.plot(earnings.df$Degree,earnings.df$Subject,earnings.df$Earnings,
+                 xlab="Degree",ylab="Mean Earnings (dollars)",
+                 trace.label = "Subject",cex=0.5,xpd=1)
+summary(aov(Earnings ~ Subject * Degree, data = earnings.df))
+```
+Interaction plots between degree level and subject matter indicate that there is no significant interaction between these variables in determining earnings per course. This conclusion is corroborated by the anova table, where the interaction term is non-significant.
+
+## c
+```{r}
+par(mfrow=c(2,2))
+plot(earning.fit <- aov(Earnings ~ Subject * Degree, data = earnings.df),
+     which = c(1,2,4))
+influencePlot(earning.fit)
+```
+Assumptions of normality and constant variance appear to be satisified. There do appear to be some highly influential points that may be outliers, though. 
+
+```{r}
+outlierTest(earning.fit)
+```
+No outliers detected using a bonferonni corrected threshold.
+
+## d)
+
+Post-Hoc pairwise comparisons are appropriate since there was a significant main effect for both degree level and subject matter. 
+```{r}
+earnings.postSub <- ScheffeTest(earning.fit,which=c("Subject"))
+earnings.postDeg <- ScheffeTest(earning.fit,which=c("Degree"))
+```
+
+```{r}
+par(mar=c(5,6,4,1)+.4)
+plot(earnings.postSub, las = 1)
+plot(earnings.postDeg, las = 1)
+```
+Post-hoc comparisons of the earnings of professors for different subjects were conducted using the scheffe's method. All comparisons of earnings between Social ($M = \$2785 \pm 132$), Humanities ($M = \$2425 \pm 126$), Engineering ($M = \$3236 \pm 149$), and Management ($M = \$3033 \pm 162$) professors were significant ($ p < 0.01$) except for the following: Management vs Social or Engineering. 95% scheffe's simultaneous CI for each comparison are presented above. If 0 is within the confidence band, then it is a nonsignificant difference. 
+
+A similar analysis was done for comparisons of earnings between professors who had obtained different levels of degrees. Doctrates ($M = \$3236 \pm 96.1$) earned significantly more money compared to Masters ($M = \$2538 \pm 93.7$) and Bachelors ($M = \$2400 \pm 111$). There was no significant different between earnings of Masters and Bachelors professors. 95% scheffe's simultaneous CI for these comparisons are also presented above.
+
+## e)
+
+The highest paid adjunct professors were those who had doctorates and taught engineering ($M = \$3740 \pm 51$), while the lowest paid were those who had Bachelors and taught humanities ($M = \$1800 \pm 100$). Since a comparison between these groups of teachers is unplanned and there was no significant interaction between the factors Subject-Degree, I used the scheffe's method to correct for multiple comparisons (most conservative).
+```{r}
+earning.cell_summary <- group_by(earnings.df,Subject,Degree) %>% 
+  summarise(mean.Earn = mean(Earnings), se.Earn = se(Earnings))
+
+mse <- summary(earning.fit)[[1]][[3]][4]
+con_sum <- (1/2) + (1/5)
+SE.c <- sqrt(mse * con_sum)
+g <- length(levels(earnings.df$Subject)) * length(levels(earnings.df$Degree))
+
+crit_f <- qf(0.01, g-1, nrow(earnings.df) - g, lower.tail = F)
+
+doc.eng <- max(earning.cell_summary$mean.Earn)
+bach.hum <- min(earning.cell_summary$mean.Earn)
+
+diff <- doc.eng-bach.hum
+
+scheffe.lower.earn <- diff - sqrt((g-1)*crit_f) * SE.c
+scheffe.upper.earn <- diff + sqrt((g-1)*crit_f) * SE.c
+
+paste(round(scheffe.lower.earn,2), round(scheffe.upper.earn,2), sep = " , ")
+```
+The 99% CI for the mean difference between the highest paid adjunct professor vs the lowest paid adjunct professor ($M_{Diff} = \$1940$) was [$\$1250.26$,$\$2629.74$], indicating that this difference was indeed significant. 
+
+# 7)
+```{r}
+data("teengamb")
+```
+
+```{r}
+teengamb$sex <- factor(teengamb$sex, labels = c("M","F"))
+teen.fit <- lm(gamble ~ sex + status + income + verbal, data = teengamb)
+```
+
+## a)
+```{r}
+summary(teen.fit)
+```
+The coeficients for income and females are significant. 
+
+## b)
+
+The sex coeffienct in these results represents the change in gamblind expenditure from male to females when holding all other covariates constant. That change is a decrease in gambling expdenditure of 22.12 pounds per year. 
+
+## c)
+```{r}
+avg.data <- as.data.frame(rbind(colMeans(teengamb[-c(1,5)])))
+avg.data$sex <- factor(0, label = "M")
+colnames(avg.data) <- c("status","income","verbal","sex")
+male.average <- predict(teen.fit,newdata = avg.data,
+                        se=T,interval="prediction")
+male.average
+```
+
+```{r}
+max.data <- as.data.frame(lapply(teengamb[-c(1,5)],max))
+max.data$sex <- factor(0, label = "M")
+colnames(max.data) <- c("status","income","verbal","sex")
+male.max <- predict(teen.fit,newdata = max.data,
+                        se=T,interval="prediction")
+male.max
+```
+The confidence interval for the prediction of a male with maximum values of the covariates status, income, and verbal was larger since such an observation is farther from the mean of the model fit. 
+
+## d)
+```{r}
+summary(teen.fit2 <- lm(gamble ~ income, data = teengamb))
+```
+```{r}
+AIC(teen.fit)
+AIC(teen.fit2)
+```
+The first model, which included the covariates sex, status, income and verbal, performed better than the model that only included income. It explained a greater proportion of the variation in gambling ($R^2 = 0.53, Adj. R^2 = 0.48, F_{4,42} = 11.69, p = 1.815e-06$), and yeilded a smaller AIC value of 433.57. The added variation explained is likely due to the inclusion of sex as a covariate, which was significant in the first model ($\beta_{sex} = -22.11, p = 0.01$)

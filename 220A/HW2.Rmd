@@ -1,0 +1,620 @@
+---
+title: "HW2"
+author: "Jordan Garrett"
+date: "10/10/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Rmisc)
+library(asbio)
+```
+
+# 1)
++ A:
+```{r 1A}
+hemo.data <- data.frame("Honey"=c(19,12,9,17,24,24),"No Honey"=c(14,8,4,4,11,11))
+hemo.data$diff <- hemo.data$Honey-hemo.data$No.Honey
+
+par(mfrow=c(2,2))
+qqnorm(hemo.data$diff, main='Honey vs. No Honey Difference Scores Q-Q Plot')
+qqline(hemo.data$diff)
+
+hist(hemo.data$diff, freq=F, main='Histogram of No Honey\n vs Honey difference scores',
+     xlab='Difference Scores')
+plot(density(hemo.data$diff), main='Kernel Density of\nDifference scores')
+```
+Considering that the sample size is fairly small and that the data is not normally distributed but symmetric, I would perform a **Wilcoxon signed rank test** to evaluate the experiment's treatment effects on hemoglobin levels in paired twins.
+
+```{r}
+wilcox.test(hemo.data$Honey, hemo.data$No.Honey, 
+            alternative="greater",paired=TRUE)
+```
+H~0~: Honey does not change hemoglobin levels
+H~1~: Honey increases hemoglobin levls
+
+Results of the test indicate that we can **reject the null hypothesis**, **p** < 0.05, and that teh inclusion of honey in one's diet increases hemoglobin levels.
+
++ B:
+```{r 1B}
+preBeats.data <- data.frame("Before"=c(6,9,17,22,7,5,5,14,9,7,9,51),
+                            "After"=c(5,2,0,0,2,1,0,0,0,0,13,0))
+preBeats.data$Diff <- preBeats.data$After - preBeats.data$Before
+```
+
+```{r}
+
+par(mfrow=c(2,2))
+qqnorm(preBeats.data$Diff, main='Before vs After Difference\n in Premature Heartbeats')
+qqline(preBeats.data)
+
+hist(preBeats.data$Diff, freq=F,main='Distribution of Before vs\n After Premature Beats',
+     xlab='Difference of Premature Beats')
+plot(density(preBeats.data$Diff), 
+     main='Kernel Density of\n Premature Beats Difference Scores')
+```
+I would conduct a **Permutation test** since the difference scores are not normally distributed and non-symmetric. 
+
+### Permute
+```{r}
+perm.diff <- matrix(abs(preBeats.data$Diff),length(preBeats.data$Diff),1000)
+perm.diff <- perm.diff*sign(runif(1000*length(preBeats.data$Diff))-.5)
+perm.mean <- apply(perm.diff, 2, mean)
+
+hist(perm.mean, freq = F, 
+     main='Permuted Distribution of\n Before vs After pre-Mature Hearbeats',
+     xlab='Mean Difference')
+abline(v=mean(preBeats.data$Diff), col="red")
+abline(v=quantile(perm.mean,0.025),col='blue',lty=2)
+
+preBeats.p <- (1+sum(abs(perm.mean) > abs(mean(preBeats.data$Diff)))) / (1000+1)
+preBeats.p
+```
+H~0~: Drug does not change the amount of premature heartbeats.
+H~1~: Drug decreases the amount of premature heartbeats.
+
+Permutation results indicate that the drug decreases the amount of premature hearbeats (**p**=0.002; $\alpha$ = 0.05)
+
++ D:
+```{r 1D}
+oxygen <- c(10,15,6,10,11,3,8,8,3,13,10,9,8,9,8,4,10,15,11,
+            5,14,7,8,8,2,13,6,2,7,3)
+placebo <- c(5,6,4,3,3,5,6,4,4,2,0,7,0,3,2,2,3,6,0,3,-3,1,6,
+             6,8,2,12,24,5,3,3,3,13,4)
+
+par(mfrow=c(2,2))
+qqnorm(oxygen,main='Oxygen Treatment Group\n Normal Q-Q Plot')
+qqline(oxygen)
+qqnorm(placebo, main='Placebo Group\n Normal Q-Q Plot')
+qqline(placebo)
+plot(density(oxygen-placebo),main='Kernel Density of Oxygen vs\n Placebo Difference Scores')
+```
+
+```{r}
+var.test(oxygen,placebo)
+```
+Results from the Q-Q plots suggest that the data adequately fits a normal distribution, although this fit is not perfect. Considering that the variance between the two groups was not found to be statistically different, as indicated by the *F*-test, I would proceed with a **two-sample t-test** of **equal variance**.
+
+```{r}
+t.test(oxygen,placebo,eq=T)
+```
+H~0~: There is no difference in the change of oral hygiene between those who brushed with a placebo and those who brushed with an oxygen gel.
+H~1~: There is a difference in the change of oral hygience between those who breshed with a placebo and those who breshed with an oxygen gel. 
+
+T-test (equal variance) results demonstrate that there was a significant difference, **p** < 0.05, in oral hygiene between the placebo group and the oxygen gel group, with the latter population displaying greater hygiene. 
+
++ E:
+```{r 1E}
+pc <- c(1.4290,1.42860,1.42906,1.42957,1.42910,1.42930,1.42945)
+eo <- c(1.42932,1.42908,1.42910,1.42951,1.42933,1.42905,1.42914,1.42849,
+        1.42894,1.42886)
+
+par(mfrow=c(2,2))
+qqnorm(pc, main='Potassium Chlorate\n Q-Q Plot')
+qqline(pc)
+qqnorm(eo, main='Electrolysis Q-Q Plot')
+qqline(eo)
+
+plot(density(pc),main='Kernel Density of Potassium Chlorate Measures')
+plot(density(eo),main='Kernel Density of Electrolysis Measures')
+```
+Although the data from both groups adequately fit a normal distribution and are symmetric, their sample sizes are small. To overcome this, I would perform a **Wilcoxon rank sum test** (mean and median of both groups are nearly identical).
+
+### Wilcoxon
+```{r}
+wilcox.test(pc,eo)
+```
+H~0~: There is no difference between the means of the two methods.
+H~1~: The means between the two methods are different.
+
+Results of the Wilcoxon rank sum test indicate that the distributions are not statistically different,, **p** > 0.05, and that impurities are not present in either method. 
+
++ F:
+```{r 1F}
+chem.comp <- c(2.30143,2.29890,2.29816,2.30182,2.29869,2.29940,2.29849,2.29889)
+air <- c(2.31026,2.31017,2.30986,2.31003,2.31007,2.31024,2.31010,2.31028)
+
+par(mfrow=c(1,2))
+qqnorm(chem.comp-air, 
+       main='Chemical Compounds vs Air\n Nitrogen Difference\n Normal Q-Q Plot')
+qqline(chem.comp-air)
+
+plot(density(chem.comp-air), 
+     main='Kernel Density Estimate of Chemical\n Compounds vs Air Nitrogen\n Difference Scores')
+```
+The difference between these two groups is not normally distributed and both have a small sample size, leading me to conclude that the **Wilcoxon rank sum test** and **Permutation test** are best for analyses.
+
+### Wilcox
+```{r}
+wilcox.test(chem.comp,air)
+```
+
+### Permutation
+```{r}
+chem.air.MeanDiff <- mean(chem.comp)-mean(air)
+
+chem.air <- c(chem.comp,air)
+
+nIt <- 100000
+perm.chem.airDiff <- NULL
+
+for (i in 1:nIt){
+  idx <- sample(c(1:length(chem.air)),replace=T)
+  g1 <- chem.air[idx][1:length(chem.comp)]
+  g2 <- chem.air[idx][-c(1:length(air))]
+  perm.chem.airDiff[i] <- mean(g1)-mean(g2)
+}
+
+hist(perm.chem.airDiff, freq=F,
+     main='Permuted Differences Between\nChemical Compound vs Air Nitrogen Measures',
+     xlab='Mean Difference Score')
+abline(v=chem.air.MeanDiff,col='red')
+abline(v=quantile(perm.chem.airDiff,c(0.025,0.975)),lty=2, col='blue')
+
+chem.air.p <- (1+sum(abs(perm.chem.airDiff) > abs(chem.air.MeanDiff)))/(nIt+1)
+chem.air.p
+```
+H~0~:There is no difference between the mean of the two methods.
+H~1~: There is a difference between the mean of the two methods.
+
+Wilcoxon rank sum test and permutation test results confirm that there is a significant difference, **p** < 0.001, between the two methods of determining the density of nitrogen.
+
++ G:
+```{r 1G}
+music <- c(35.0,36.8,40.2,46.6,50.4,64.2,83.0,87.6,89.2)
+no.music <- c(28.2,28.6,33.0,34.8,45.4,50.8,52.6,66.4,67.8)
+
+par(mfrow=c(1,2))
+qqnorm(music-no.music, main='Music vs No Music Q-Q Plot')
+qqline(music-no.music)
+
+plot(density(music-no.music), main='Kernel Density Estimate of Music vs\n No Music Scores')
+```
+Once again, I would conduct a **Wilcoxon rank sum test** and a **Permutation test** since the data does not adequately follow a normal distribution, and the sample size is small. 
+
+### Wilcoxon
+```{r}
+wilcox.test(music,no.music)
+```
+### Permutation
+```{r}
+music.MeanDiff <- mean(music)-mean(no.music)
+
+all.music <- c(music,no.music)
+
+nIt <- 10000
+perm.music.Diff <- NULL
+
+for (i in 1:nIt){
+  idx <- sample(c(1:length(all.music)))
+  g1 <- all.music[idx][1:length(music)]
+  g2 <- all.music[idx][-c(1:length(no.music))]
+  perm.music.Diff[i] <- mean(g1)-mean(g2)
+}
+
+hist(perm.music.Diff, freq=F,
+     main='Permuted Mean Difference Between\nMusic vs No Music')
+abline(v=music.MeanDiff,col='red')
+abline(v=quantile(perm.music.Diff,c(0.025,0.975)),lty=2,col='blue')
+
+music.p <- (1+sum(abs(perm.music.Diff) > abs(music.MeanDiff)))/(nIt+1)
+
+sprintf('permutation p value = %.4f',music.p)
+```
+H~0~: Background music does not have an effect on worker productivity.
+H~1~: Bacground music changes worker productivity.
+
+Results of the Wilcoxon rank sum test and permutation test indicate that we are unable to reject the null hypothesis of background music having no significant influence on worker productivity, *p* > 0.05. 
+
++ H: 
+```{r}
+male.kit <- c(40,76,89,106,120,130,150,155,382)
+female.kit <- c(66,69,94,103,117,391)
+```
+Since the data is not paired and I have differing sample sizes, I would perform a **Wilcoxon test**, **Permutation**, and **Bootstrapping** test.
+
+## Wilcoxon
+```{r}
+wilcox.test(male.kit,female.kit)
+```
+
+## Permutation
+```{r}
+kit.MeanDiff <- mean(male.kit)-mean(female.kit)
+
+comb.kit <- c(male.kit,female.kit)
+
+nIt <- 10000
+perm.kit.Diff <- NULL
+
+for (i in 1:nIt){
+  idx <- sample(c(1:length(comb.kit)))
+  g1 <- all.music[idx][1:length(male.kit)]
+  g2 <- all.music[idx][-c(1:length(female.kit))]
+  perm.kit.Diff[i] <- mean(g1)-mean(g2)
+}
+
+hist(perm.kit.Diff, freq=F,
+     main='Permuted Mean Difference Between\nMale Kittens vs Female Kittens')
+abline(v=kit.MeanDiff,col='red')
+abline(v=quantile(perm.kit.Diff,c(0.025,0.975)),lty=2,col='blue')
+
+kit.p <- (1+sum(abs(perm.kit.Diff) > abs(kit.MeanDiff)))/(nIt+1)
+
+sprintf('permutation p value = %.4f',kit.p)
+```
+## Bootstrapping
+```{r}
+nIt <- 1000
+boot.kit <- NULL
+
+for (i in 1:nIt){
+  male.boot <- mean(sample(male.kit, length(female.kit), replace=T))
+  female.boot <- mean(sample(female.kit, replace=T))
+  boot.kit[i] <- male.boot - female.boot
+}
+
+hist(boot.kit, freq=F, 
+     main='Male vs Female Kits Boostrapped Mean Difference',
+     xlab='Mean Difference')
+abline(v=quantile(boot.kit,c(0.025,0.975)), col='red')
+
+quantile(boot.kit,c(0.05,0.95))
+```
+H~0~:There is no difference in pattern recognition between male and female kittens.
+H~1~: There is a difference in pattern recognition between male and female kittens.
+
+Wilcoxon rank sum, Permutation, and bootstrapping results indicate that there is not significant difference in pattern recognition between the two kitten genders **p** > 0.05, 95% CI[-116.91,114.34].
+
++ I:
+```{r}
+high.flies <- rnorm(200,mean=20.6,sd=6)
+low.flies <- rnorm(47,mean=48.1,sd=14.2)
+```
+Considering the drastic difference in sample sizes between high and low flies, I would only conduct a **Bootstrapping** test to determine the 90% probability interval.
+
+```{r}
+nIt <- 1000
+boot.flies <- NULL
+
+for (i in 1:nIt){
+  high.boot <- sample(high.flies, length(low.flies), replace=T)
+  low.boot <- sample(low.flies,replace=T)
+  boot.flies[i] <- mean(low.boot) - mean(high.boot)
+}
+
+hist(boot.flies, freq=F,
+     main='Low vs High Activity Flies Bootstrapped\nLife Span Differences',
+     xlab='Mean Difference')
+abline(v=quantile(boot.flies,c(0.025,0.975)), col='red')
+
+quantile(boot.flies,c(0.025,0.975))
+```
+H~0~: There will be no difference in the lifetime length between high activity and low activity flies.
+H~1~: Low activity flies have a longer life span than high activity flies.
+
+Bootstrapping test results indicate that we can reject the null hypothesis that there is no difference in life length between low and high activity flies, and that low activity flies have a greater average lifetime length, 95% CI [23.9,32.1]. 
+
++ J:
+```{r}
+temp.o2 <- rnorm(200,mean=25.9,sd=8)
+control <- rnorm(200,mean=17.6,sd=6)
+```
+
+First, I would conduct an ANOVA with this experimental design and proceed with the appropriate post-hoc comparisons. Since the question specifies that the null hypothesis is d = m~t~ - m~c~, though, I would conduct an two samples t-test .
+
+```{r}
+t.test(temp.o2,control,alternative='less',eq=F)
+```
+H~0~: There is no difference between the mean lifetimes of flies in the two groups.
+H~1~: The mean lifetime of flies in the Temp O~2~ group is less than the control group.
+
+Results of the t-test indicate that there is no difference between the average lifetime of houseflies in the "Temp. O~2~" group and the "Control" group, **p** > 0.05
+
+# 2)
+```{r}
+percent.diffScores <- c(4.9,5.3,2.5,.9,3.2,2.6,10.7,1.1,14.7,-.3,1.7,
+                        5.7,13.8,14.4,4.0,-1.1,5.3,.1,7.4,5.3,7.8,8.2,11.1,
+                        3.3,5.1,5.9,8.4,1.9,.5,8.3,4.2,11.8,3.4,-2.5,6.1,
+                        5.7,1.8,3.5,13.8,26.0,-.1,3.9,9.9,6.0,-1.5,6.1,2.3,
+                        -.2,11.2,3.5,6.2,12.3,8.3,10.1,-1.8,9.2,.1,7.6,7.8)
+
+qqnorm(percent.diffScores,
+       main='Percent Changes in Cortex Weight\nNormal Q-Q Plot')
+qqline(percent.diffScores)
+```
+
+```{r}
+t.test(percent.diffScores,alternative='greater')
+```
+Since the increase in percentage is comparable across experiments, it is then justified to pool all of the samples from each experiement. A paired t-test can then be conduced on this data, which indicates that we can reject the null hypothesis of there being no difference in brain volume between the treatment and control group. It is arguable, though, that the data cannot be pooled from each of the experimental replications since the mices' environmental settings may not have been held constant (e.g., using different toys, food, etc.). In this instance, I would proceed with a bootstrapping test to approximate the true population mean difference. 
+
+# 3)
+
+### Permutation
+```{r}
+nIt <- 1000
+comb.hemo <- c(hemo.data$Honey,hemo.data$No.Honey)
+hemo.perm <- NULL
+for (i in 1:nIt){
+  idx <- sample(c(1:length(comb.hemo)))
+  perm.hon <- comb.hemo[idx][1:length(hemo.data$Honey)]
+  perm.noHon <- comb.hemo[idx][-c(1:length(hemo.data$No.Honey))]
+  hemo.perm[i] <- mean(perm.hon) - mean(perm.noHon)
+}
+
+perm.Hemo_p <- (1+sum(abs(hemo.perm) > abs(mean(hemo.data$Honey)-mean(hemo.data$No.Honey)))) / (1000+1)
+sprintf('permutation p value = %.4f',perm.Hemo_p)
+```
+
+### Bootstrap
+```{r}
+nIt <- 1000
+boot.hemo <- NULL
+for (i in 1:nIt){
+  boot.hon <- mean(sample(hemo.data$Honey,replace=T))
+  boot.noHon <- mean(sample(hemo.data$No.Honey,replace=T))
+  boot.hemo[i] <- boot.hon-boot.noHon
+}
+
+quantile(boot.hemo,c(0.025,0.975))
+```
+
+```{r}
+par(mfrow=c(1,2))
+
+hist(hemo.perm, freq=F,
+     main='Permuted Honey vs\nNo Honey Mean Difference',
+     xlab='Mean Difference')
+abline(v=(mean(hemo.data$Honey)-mean(hemo.data$No.Honey)),col='red')
+abline(v=quantile(hemo.perm,0.95),lty=2,col='blue')
+
+hist(boot.hemo,freq=F,
+     main='Bootstrapped Honey vs\nNo Honey Mean Difference',
+     xlab='Mean Difference')
+abline(v=quantile(boot.hemo,c(0.025,0.975)),col='red')
+```
+Results of the permuation and boostrapping tests indicate that including honey in ones diet increases the levels of hemoglobin, **p** < 0.05, 95% CI [3.50,14.33].
+
+# 4)
+
+### Permutation
+```{r}
+comb.oxyPlacebo <- c(oxygen,placebo)
+groups <- c(rep(1,length(oxygen)),rep(2,length(placebo)))
+
+nIt <- 1000
+perm.oxyPlacebo <- NULL
+
+for (i in 1:nIt){
+  perm.groups <- sample(groups)
+  perm.oxy <- comb.oxyPlacebo[which(perm.groups==1)]
+  perm.plac <- comb.oxyPlacebo[which(perm.groups==2)]
+  perm.oxyPlacebo[i] <- mean(perm.oxy) - mean(perm.plac)
+}
+
+
+perm.oxyPlac_p <- (1+sum(abs(perm.oxyPlacebo) > abs(mean(oxygen)-mean(placebo))))/(1000+1)
+sprintf("permutation p value = %.4f",perm.oxyPlac_p)
+```
+
+### Bootstrapping
+```{r}
+nIt <- 1000
+boot.oxyPlac <- NULL
+oxyPlac.meanDiff <- mean(oxygen)-mean(placebo)
+for (i in 1:nIt){
+  boot.oxy <- sample(oxygen,28,replace=T)
+  boot.plac <- sample(placebo,28,replace=T)
+  boot.oxyPlac[i] <- mean(boot.oxy) - mean(boot.plac)
+}
+
+quantile(boot.oxyPlac,c(0.025,0.975))
+```
+
+```{r}
+par(mfrow=c(1,2))
+
+hist(perm.oxyPlacebo, freq=F,
+     main='Permuted Mean Difference\nBetween Oxygen vs Placebo Groups',
+     xlab='Mean Difference')
+abline(v=(mean(oxygen)-mean(placebo)),col='red')
+abline(v=quantile(perm.oxyPlacebo,0.95),col='blue',lty=2)
+
+hist(boot.oxyPlac,freq=F,
+     main='Bootstrapped Mean Difference\nBetween Oxygen vs Placebo Groups',
+     xlab='Mean Difference')
+abline(v=quantile(boot.oxyPlac,c(0.025,0.975)),col='red')
+```
+Results of the bootstrapping and permutation test both confirm that those who brushed with an oxygen gel had greater hygiene than those who used a placebo, **p** < 0.05, 95% CI [1.43,5.64].
+
+
+# 5)
+The t-test is more robust than the Wilcoxon test when the data is normally distributed and sample size is large. Even when the normality assumption is violated, the t-test is still fairly robust. In contrast, the Wilcoxon test is more robust when the data is not normally distributed and symmetrical, or if the sample size is small.
+
+### Compare Power when distribution of data is normal
+```{r}
+n <- 10
+nsim <- 1000
+d.n <- seq(0,2,len=n)
+pt <- pw <- matrix(NA, length(d.n), nsim) 
+for (j in 1:n) {
+  for (i in 1:nsim) {
+    y <- rnorm(n, mean=d.n[j], sd=1) 
+    pt[j,i] <- t.test(y)$p.value 
+    pw[j,i] <- wilcox.test(y)$p.value
+  }
+}
+powert.norm <- apply(pt<.05,1,mean) 
+powerw.norm <- apply(pw<.05,1,mean)
+```
+
+### Compare Power when distribution of data is non-normal
+```{r}
+library(rmutil)
+
+n <- 10
+nsim <- 1000
+d.g <- seq(0,2,len=10)
+pt <- pw <- matrix(NA, length(d.g), nsim) 
+for (j in 1:length(d.g)) {
+  for (i in 1:nsim) {
+    y <- rlaplace(n, m=d.g[j], s=1)
+    pt[j,i] <- t.test(y)$p.value 
+    pw[j,i] <- wilcox.test(y)$p.value
+  }
+}
+powert.laplace <- apply(pt<.05,1,mean) 
+powerw.laplace <- apply(pw<.05,1,mean)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(d.n,powert.norm,type='n',xlab='Mean',ylab='power',
+     main="T-Test vs Wilcoxon\n(Normal Distribution)\n",ylim=c(0,1))
+lines(d.n,powert.norm,type='b',col='red',pch=84)
+lines(d.n,powerw.norm,type='b',col='blue',pch=87)
+
+plot(d.g,powert.laplace,type='n', xlab='Mean',ylab='power',
+     main="T-Test vs Wilcoxon\n(Laplace Distribution)\n",ylim=c(0,1))
+lines(d.g,powert.laplace,type='b',col='red',pch=84)
+lines(d.g,powerw.laplace,type='b',col='blue',pch=87)
+```
+Comparison of power between the two tests indicate that the T-test is slightly better than the Wilcoxon test when sample size begins to increase for both the normal and laplace distribution. At higher mean values, though, the laplace distribution progresses towards normality (which is why the T-test starts to have more power). In contrast, the Wilcoxon test is better than the T-test when sample size is small and not normally distributed. 
+
+# 6)
+```{r}
+custom_z.test <- function(x,xtotal,y,ytotal,ci=.95){
+  x.prop <- x/xtotal
+  y.prop <- y/ytotal
+  
+  xy.prop <- (x+y)/(xtotal+ytotal)
+  
+  # z-test
+  z <- (x.prop-y.prop)/sqrt(xy.prop*(1-xy.prop)*((1/xtotal)+(1/ytotal)))
+  
+  p_1way <- pnorm(-abs(z))
+
+  p_2way <- 2*pnorm(-abs(z))
+
+  # CI
+  z.alpha <- qnorm((1-ci)/2)
+  sqrt.term <- ((x.prop*(1-x.prop))/xtotal) + ((y.prop*(1-y.prop))/ytotal)
+  ci.upper <- (x.prop-y.prop)+(z.alpha*sqrt(sqrt.term))
+  ci.lower <- (x.prop-y.prop)-(z.alpha*sqrt(sqrt.term))
+  ci_range <- c(ci.lower,ci.upper)
+  
+  outputs <- c("Z"=z,"p_1way"=p_1way, "p_2way"=p_2way,"X Proportion"=x.prop,
+           "Y Proportion"=y.prop, "X-Y"=(x.prop-y.prop),
+         "CI"=ci)
+  
+  cat(sprintf("     Z Proportional Test
+
+sample estimates:  
+prop 1   prop 2     prop1-prop2
+%.2f     %.2f           %.2f
+
+ z    p-value(1-way)  p-value(2-way)
+%.2f  %.3f            %.3f 
+
+%d percent CI
+[%.3f , %.3f]", 
+              x.prop, y.prop, (x.prop-y.prop),z,p_1way,p_2way,ci*100,min(ci_range),max(ci_range)))
+  
+  return(invisible(outputs))
+}
+```
+
+```{r}
+custom_z.test(19,160,17,166,ci=.95)
+```
+Results of the z proportional test indicate that there is no difference in the proportion of black and white defendants recieving the death penalty, **p** > 0.05. 
+
+# 7)
+```{r}
+custom_chisq.test <- function(data,probabilities){
+  n <- sum(data)
+  E <- n*probabilities
+  X <- sum(((data-E)^2)/E)
+  dfs <- length(data)-1
+  p <- pchisq(X,df=dfs,lower.tail = F)
+  
+  outputs <- c("data"=data,"X-squared"=X,"df"=dfs,"p"=p)
+  
+  cat(sprintf("
+X-Squared Test
+          
+data: %s
+X-squared= %.2f, df= %d, p.value= %.3g",deparse(substitute(data)),
+      X,dfs,p))
+  
+  return(invisible(outputs))
+}
+```
+
+```{r}
+tomato <- c(926,288,293,104)
+custom_chisq.test(tomato, probabilities = c(9,3,3,1)/16)
+```
+Results indicate that the observed ratio of tomato phenotypes are not statistically different from the expected tomtato phenotype ratios according to Mendel's law, **p** > 0.05.
+
+```{r}
+birth.hour <- c(52,73,89,88,68,47,58,47,48,53,47,34,21,31,
+         40,24,37,31,47,34,36,44,78,59)
+custom_chisq.test(birth.hour,probabilities = rep(1,24)/24)
+```
+Results indicate that the times of which babies are born is not uniformly distributed, **p** < 0.001. In short, babies are not all born at the same time. 
+
+# 8)
+```{r}
+usage.data <- matrix(c(479,214,172,173,47,45,119,15,85),3,3)
+chisq.test(usage.data)
+```
+Results of the X-squared test indicate that marajuana use and political views are independent in this population, *p* < 0.001
+
+# 9) 
+```{r}
+num_defective <- c(0,1,2,3,4)
+observed_values <-  c(26,51,47,16,10)
+estimated_prob <- choose(4,num_defective)*(0.5)^num_defective*(0.5)^(4-num_defective)
+expected_values <- estimated_prob*sum(observed_values)
+
+data <- rbind(observed_values,expected_values)
+chisq.test(data)
+
+
+```
+H~0~: Frequencies of defective batteries follows a binomial distribution.
+H~1~: Frequencies of defective batteries does not follow a binomial distribution. 
+
+Results of the goodness of fit test indicate that the observed frequencies of defective batteries does not follow a binomial distribution, **p** < 0.001
+
+# 10)
+```{r}
+hpo.insulin <-  matrix(c(4,40,21,74,28,59,15,26,12,46),2,5)
+chisq.test(hpo.insulin)
+```
+X-squared test results indicated that the presence/absence of hypoglycemia is independent of insulin dosage, *p* < 0.01

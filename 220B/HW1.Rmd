@@ -1,0 +1,134 @@
+---
+title: "HW1_220B"
+author: "Jordan"
+date: "1/21/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(boot)
+```
+
+# 5
+
+## a)
+```{r}
+n <- 1000
+y <- seq(0,10,length=n)
+fy <- dexp(y,rate=1)
+plot(y,fy,type = "l",lwd=2, col=c("blue"), ylab='f(y)',
+     xlab = 'y', main=expression(paste('Exponential Distribution ',lambda==1)))
+```
+The area underneath the curve is equal to 1 since it represents the probabilities of a random variable falling within a range of values, which when integrated over sums to 1. 
+
+## b)
+
+$P(Y > y) = e^{-\lambda x}$
+
+
+## c)
+```{r}
+#need to have the likelihood function of exponential distribution, then generate random vector with mean = 1
+exp_likeh <- function(lambda,y){
+  ans <- (lambda)*exp(-lambda*y)
+  return(ans)
+}
+
+y <- 1
+lambdas <- seq(0,5,length.out = 100)
+lamb.lh <- exp_likeh(lambdas,y)
+
+plot(lambdas,lamb.lh, type='l',col='green',lwd=3,
+     ylab='Likelihood',xlab=expression(lambda),
+     main=expression(paste('Likelihood of ',lambda,' when y=1')))
+abline(v=1,col='red',lty=2)
+text(1.2,0,labels=expression(lambda['MLE']),col='red')
+```
+
+## d)
+
+Theoretical mean:
+\begin{eqnarray}
+E[Y] = \int^{\infty}_{0} yf(y)dy \\
+E[Y] = \int^{\infty}_{0} y\lambda e^{-\lambda y}dy \\
+Let \ v' = \lambda e^{-\lambda y}, \ u = y, 
+\ v = -e^{-\lambda y}, \ u' = 1, \ du = dy, \ then: \\
+= uv - \int vdu \\ 
+= [-ye^{-\lambda y}]^{\infty}_0 - \int-e^{-\lambda y}dy \\
+Let \ u = -\lambda y, \ du = -\lambda dy, \ then: \\
+= (0 - 0) - \int e^u \frac{du}{\lambda} \\ 
+= -[-\frac{e^{-\lambda y}}{\lambda}]^{\infty}_0 \\
+E[Y] = \frac{1}{\lambda}
+\end{eqnarray}
+
+
+
+Theoretical variance:
+\begin{eqnarray}
+Var[Y] = E[Y^2]-(E[Y])^2 \\
+E [Y^2] = \int^{\infty}_0 y^2 \lambda e^{-\lambda x} dy \\ 
+Let \ u = y^2 , v' = \lambda e^{-\lambda y}, then: \\ 
+= -y^2e^{-\lambda x} - \int -e^{\lambda y}2ydy \\
+Let \ u = 2y, v' = -e^{-\lambda x}, then: \\
+= -x^2e^{-\lambda y} - \frac{2ye^{-\lambda y}}{\lambda} + \int 2\frac{e^{-\lambda y}}{{\lambda}} \\
+= -x^2e^{-\lambda y} - \frac{2ye^{-\lambda y}}{\lambda} - \frac{2e^{-\lambda y}}{{\lambda^2}} \\
+= [-e^{-\lambda y}(y^2 + \frac{2y}{\lambda} + \frac{2}{\lambda^2})]^{\infty}_0 \\
+\quad \\
+E[Y^2] = \frac{2}{\lambda^2} \\
+Var[Y] = \frac{2}{\lambda^2} - (\frac{1}{\lambda})^2 \\ 
+Var[Y] = \frac{1}{\lambda^2}
+\end{eqnarray}
+
+
+## h)
+\begin{eqnarray}
+f(y | \lambda) = \lambda exp(-\lambda y) \\ 
+= exp[ln(\lambda exp(-\lambda y))] \\
+= exp[ln(\lambda) - \lambda y] \\
+= exp[-\lambda y + ln(\lambda)] \\
+\quad \\
+\theta_i = -\lambda \\
+b(\theta_i) = -ln(\lambda) = -ln(-\theta_i) \\
+a(\phi) = 1 \\
+\phi = 1 \\
+c(y,\phi) = 0
+\end{eqnarray}
+
+# 6)
+```{r}
+n = 1000
+b0 <- 1
+b1 <- 0.5
+x <- seq(-10,10,length=n)
+mu <- inv.logit(b0 + b1*x)
+```
+
+## d)
+
+```{r}
+plot(mu,logit(mu), xlab = expression(pi[i]), ylab = expression(logit(pi[i])), 
+     main = expression(paste(pi[i],' vs ',logit(pi[i]))),
+     type = 'l', col='blue', lwd=2)
+```
+
+## e)
+
+```{r}
+plot(x,mu, xlab = expression(x[i]), ylab = expression(pi[i]), 
+     main = expression(paste(x[i],' vs ',pi[i])),
+     type = 'l', col='red', lwd=2)
+```
+
+## f)
+
+```{r}
+set.seed(4)
+y <- rbinom(n,1,mu)
+summary(glm1 <- glm(y ~ x, family="binomial"))
+```
+$\beta_0 = 1, \beta_1 = 0.5$
+
