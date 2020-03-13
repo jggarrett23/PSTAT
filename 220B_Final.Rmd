@@ -1,0 +1,51 @@
+---
+title: "220B_Final_Project"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape2)
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+```
+
+# Project Goal:
+
+For this project, suppose a survey was conducted within San Francisco to investigate the number of individual consultations with pharmacists.
+
++ Investigate how the number of consultations with a pharmacist is associated with other
+variables. As part of this investigation, develop a model for pharmacy managers to estimate
+the expected number of pharmacist consultations by a new customer within a 4 week period, if
+the pharmacy was provided with values of the other variables for that new customer.
+
++ For the first person in this dataset, use your fitted model to estimate the probability distribution for his/her number of pharmacy consultations within a 4 week period, i.e., estimate the probability that his/her number of pharmacist consultations equals 0,1,2, etc.
+
++ Clearly state and discuss your model(s) and assumptions, and also the limitations of your analysis in the context of this study. Within the discussion section, you may include any questions you would like to ask the people who designed the survey and collected these data
+
+```{r Load in data}
+pharmacy_data <- read.table("C:/Users/Jordan/Desktop/pharmacist.txt",header = T)
+
+#inspect first few rows
+head(pharmacy_data)
+```
+
+### We are trying to predict pc, which is the number of consultations with a pharmacist in the past 4 weeks.
++ pc variable represents counts, so we are modeling a Poisson distribution
+
+## EDA
+
+```{r}
+long_df=melt(pharmacy_data)
+ggplot(long_df, aes(value, colour = variable)) + 
+  geom_density(aes(fill=variable),alpha = 0.1)+
+  facet_wrap(~variable, scales = "free") + 
+  labs(color = 'Subject\nResponses') + guides(fill=F)
+
+```
+
+Data either follows a bimodal, exponential, or skewed normal distribution. 
