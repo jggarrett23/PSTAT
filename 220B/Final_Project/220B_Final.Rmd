@@ -14,6 +14,19 @@ library(ggplot2)
 library(GGally)
 ```
 
+
+```{r directorys, include =FALSE}
+
+#Change working directory depending if on Mac vs Windows
+
+tryCatch({
+  setwd("/Users/owner/Desktop/PSTAT")},
+  error = function(e) {
+    print('Path for Mac working directory not found, trying Windows...')
+    setwd("D:/PSTAT/")})
+```
+
+
 # Project Goal:
 
 For this project, suppose a survey was conducted within San Francisco to investigate the number of individual consultations with pharmacists.
@@ -28,7 +41,7 @@ the pharmacy was provided with values of the other variables for that new custom
 + Clearly state and discuss your model(s) and assumptions, and also the limitations of your analysis in the context of this study. Within the discussion section, you may include any questions you would like to ask the people who designed the survey and collected these data
 
 ```{r Load in data}
-pharmacy_data <- read.table("C:/Users/Jordan/Desktop/pharmacist.txt",header = T)
+pharmacy_data <- read.table("pharmacist.txt",header = T)
 
 #inspect first few rows
 head(pharmacy_data)
@@ -39,13 +52,24 @@ head(pharmacy_data)
 
 ## EDA
 
-```{r}
+```{r Kernel Densities}
 long_df=melt(pharmacy_data)
-ggplot(long_df, aes(value, colour = variable)) + 
+kernel_plots <- ggplot(long_df, aes(value, colour = variable)) + 
   geom_density(aes(fill=variable),alpha = 0.1)+
   facet_wrap(~variable, scales = "free") + 
-  labs(color = 'Subject\nResponses') + guides(fill=F)
+  labs(color = 'Subject\nResponses') + guides(fill=F) + 
+  theme(text = element_text(size = 12))
 
+kernel_plots
 ```
 
 Data either follows a bimodal, exponential, or skewed normal distribution. 
+
+
+```{r Box Plots}
+cov.boxs <- ggplot(stack(pharmacy_data), aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot(outlier.color = 'red', alpha = 0.4) + facet_wrap(~ind, scales = 'free')+
+  theme(legend.position = "none", axis.title = element_blank(), text = element_text(size = 15))
+cov.boxs
+```
+
