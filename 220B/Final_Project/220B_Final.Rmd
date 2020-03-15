@@ -1,9 +1,9 @@
 ---
 title: "220B_Final_Project"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -236,8 +236,8 @@ for (iCol in colnames(pharmacy_data)){
     boxplot(pharmacy_data[,iCol], fit4.partials[,col_pos], ylab='partials', names=levels(pharmacy_data[,iCol]), xlab = iCol)
   } else {
     plot(pharmacy_data[,iCol],fit4.partials[,col_pos], ylab='partials', xlab = iCol)
-    lines(smooth.spline(pharmacy_data[,iCol],fit4.partials[,iCol]), col = 'red', tol = 10000, lwd = 2,
-          lty = 2)
+    #lines(smooth.spline(pharmacy_data[,iCol],fit4.partials[,iCol]), col = 'red', tol = 10000, lwd = 2,
+          #lty = 2)
   }
   
 }
@@ -247,6 +247,11 @@ for (iCol in colnames(pharmacy_data)){
 ```{r}
 plot(exp(fv), pharmacy_data[,'pc'], ylab = 'pc', xlab = 'exp(fitted values)')
 lines(smooth.spline(exp(fv),pharmacy_data[,'pc']), col = 'red', lwd = 2)
-identify(exp(fv), pharmacy_data[,'pc'], labels = name)
+#identify(exp(fv), pharmacy_data[,'pc'], labels = name)
+```
+
+### Check for variance inflation
+```{r}
+
 ```
 
