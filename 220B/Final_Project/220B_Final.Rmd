@@ -8,10 +8,12 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(reshape2)
+
 library(tidyverse)
 library(ggplot2)
 library(GGally)
+library(dplyr)
+library(ggpubr)
 ```
 
 
@@ -45,6 +47,7 @@ pharmacy_data <- read.table("pharmacist.txt",header = T)
 
 #inspect first few rows
 head(pharmacy_data)
+
 ```
 
 ### We are trying to predict pc, which is the number of consultations with a pharmacist in the past 4 weeks.
@@ -52,7 +55,9 @@ head(pharmacy_data)
 
 ## EDA
 
-```{r Kernel Densities}
+```{r Kernel Densities, warning=FALSE}
+library(reshape2)
+
 long_df=melt(pharmacy_data)
 kernel_plots <- ggplot(long_df, aes(value, colour = variable)) + 
   geom_density(aes(fill=variable),alpha = 0.1)+
@@ -71,5 +76,177 @@ cov.boxs <- ggplot(stack(pharmacy_data), aes(x = ind, y = values, fill = ind)) +
   geom_boxplot(outlier.color = 'red', alpha = 0.4) + facet_wrap(~ind, scales = 'free')+
   theme(legend.position = "none", axis.title = element_blank(), text = element_text(size = 15))
 cov.boxs
+```
+
+```{r Correlations}
+library(Hmisc)
+
+my_fn <- function(data, mapping, pts=list(), smt=list(), ...){
+  ggplot(data = data, mapping = mapping, ...) + 
+    do.call(geom_point, pts) +
+    do.call(geom_smooth, smt) 
+}
+
+#p-values of correlations
+rcorr(as.matrix(pharmacy_data), type = c('pearson'))
+
+all_corr <- ggcorr(pharmacy_data, geom = "tile", label = T, hjust = .8, size = 5, color = "grey50")
+
+# only plot the interesting correlations between pc, age, ad
+p1 <- ggplot(pharmacy_data, aes(x = pc, y = age)) +
+  geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'red', alpha = 0.5)+
+  labs(title = 'PC vs Age') + theme_classic() + theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(pharmacy_data, aes(x = pc, y = ad)) +
+  geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'green', alpha = 0.5) + 
+  labs(title = 'PC vs Ad') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
+
+p3 <- ggplot(pharmacy_data, aes(x = ad, y = age)) +
+  geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'blue', alpha = 0.5) +
+  labs(title = 'Ad vs Age') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
+
+int_corr <- ggarrange(all_corr,p1,p2,p3, nrow = 2, ncol = 2)
+
+
+annotate_figure(int_corr, top =text_grob ("Correlations Between Survey Measures", face = "bold", size = 14))
+```
+
+Strongest correlations are between pc, ad, and age. These are the ones plotted. Everything else is around the +/- 0.3 range. Ad might be strongest predictor of pc
+
+# Being Modeling
+
+## Trying out a poisson model
+```{r First pass}
+fit1 <- glm(pc ~ ., family = 'poisson', data = pharmacy_data)
+
+summary(fit1)
+
+#check phi for over dispersion
+rp <- residuals(fit1,type = 'pearson') #phi tilde numerator
+
+phi_hat <- fit1$deviance/fit1$df.residual
+phi_tilde <- sum(rp^2)/fit1$df.residual
+
+fit1.phi <- as.data.frame(cbind('hat'=phi_hat,'tilde'=phi_tilde))
+fit1.phi
+
+#check for overdispersion using residuals
+fv <- fitted(fit1)
+
+par(mfrow = c(1,2))
+
+plot(log(fv), rp, xlab = expression(log(hat(mu))),
+     ylab = "Pearson Resids")
+plot(log(fv), log(residuals(fit1, type = 'response')^2), xlab = expression(log(hat(mu))),
+     ylab = expression(log(y - hat(mu))^2))
+abline(0,1)
+```
+First pass of the model indicates that sex, age, ill, ad, hs, and ch1 are all significant predictors. Deviance diagnostics suggest that poisson is the true random component (phi hat < 1, phi tilde > 1). Residual plots suggest that we may have some outliers and potential over dispersion, though.
+
+### Trying to lower AIC
+```{r Optimize according to AIC}
+library(MASS)
+fit2 <- stepAIC(fit1, direction = 'both',trace =F)
+summary(fit2)
+```
+
+```{r Compare fit1 and fit2}
+
+anova(fit1,fit2, test = 'Chi')
+```
+Step AIC yielded model without ch2 (fit2), but model did not explain sigificantly more variation than fit1. AIC slightly lower in fit2. 
+
+### Set some variables as factors
+
+```{r}
+pharmacy_data$sex <- factor(pharmacy_data$sex, labels = c('M','F'))
+pharmacy_data$lp <- factor(pharmacy_data$lp, labels = c('uncovered','covered'))
+pharmacy_data$fp <- factor(pharmacy_data$fp, labels = c('nonprivatePharm','privatePharm'))
+pharmacy_data$fr <- factor(pharmacy_data$fr, labels = c('nonprivate','private'))
+pharmacy_data$ch1 <- factor(pharmacy_data$ch1, labels = c('nonChronic1','chronicNoLim'))
+pharmacy_data$ch2 <- factor(pharmacy_data$ch2, labels = c('nonChronic2','chronicLim'))
+
+```
+
+```{r}
+fit3 <- glm(pc ~ ., data = pharmacy_data, family = 'poisson')
+summary(fit3)
+```
+
+```{r}
+fit3.2 <- stepAIC(fit3, direction = 'both',trace = F)
+summary(fit3.2)
+```
+
+```{r}
+anova(fit2,fit3.2, test = 'Chisq')
+```
+
++ Switching variables to categorical doesn't seem to be having an effect. Try interactions
+
+### Testing Interactions
+
+```{r}
+fit4 <- stepAIC(fit1, ~ .^2, direction = 'both', trace = F)
+summary(fit4)
+```
+```{r}
+anova(fit2,fit4, test = 'Chi')
+```
+Model with interaction terms explains significantly more of the variation in pc, also has a lower AIC. Much more complex, though. 
+
+```{r}
+rp <- residuals(fit4,type = 'pearson') #phi tilde numerator
+
+phi_hat <- fit4$deviance/fit4$df.residual
+phi_tilde <- sum(rp^2)/fit4$df.residual
+
+fit4.phi <- as.data.frame(cbind('hat'=phi_hat,'tilde'=phi_tilde))
+fit4.phi
+
+#check for overdispersion using residuals
+fv <- fitted(fit4)
+
+par(mfrow = c(1,2))
+
+plot(log(fv), rp, xlab = expression(log(hat(mu))),
+     ylab = "Pearson Resids")
+plot(log(fv), log(residuals(fit4, type = 'response')^2), xlab = expression(log(hat(mu))),
+     ylab = expression(log(y - hat(mu))^2))
+abline(0,1)
+```
+
+```{r}
+library(boot)
+glm.diag.plots(fit4)
+```
+
+```{r Partial Residuals}
+fit4.partials <- residuals(fit4,type = 'partial')
+
+f <- sapply(pharmacy_data, is.factor)
+#par(mfrow = c(5,4))
+for (iCol in colnames(pharmacy_data)){
+  col_pos <- match(iCol, colnames(fit4.partials))
+  if (is.na(col_pos)){
+    next
+  }
+  
+  if (f[iCol]){
+    boxplot(pharmacy_data[,iCol], fit4.partials[,col_pos], ylab='partials', names=levels(pharmacy_data[,iCol]), xlab = iCol)
+  } else {
+    plot(pharmacy_data[,iCol],fit4.partials[,col_pos], ylab='partials', xlab = iCol)
+    lines(smooth.spline(pharmacy_data[,iCol],fit4.partials[,iCol]), col = 'red', tol = 10000, lwd = 2,
+          lty = 2)
+  }
+  
+}
+```
+
+
+```{r}
+plot(exp(fv), pharmacy_data[,'pc'], ylab = 'pc', xlab = 'exp(fitted values)')
+lines(smooth.spline(exp(fv),pharmacy_data[,'pc']), col = 'red', lwd = 2)
+identify(exp(fv), pharmacy_data[,'pc'], labels = name)
 ```
 
