@@ -354,3 +354,19 @@ model.performance.sumr <- model.performance.sumr[order(model.performance.sumr$BI
 View(model.performance.sumr)
 ```
 
+## Choosing pc = sex + age + fp + fr + ill + ad + hs + ch1 based off of BIC
+
+```{r}
+#Final diagnostics
+
+vif(fit3.2) #multicollinearity a non issue
+
+glm.diag.plots(fit3.2)
+```
+```{r}
+termplot(fit3.2, data = pharmacy_data, partial.resid = T, col.res = 'black', cex = 1, pch = 1)
+abline(h=0,lty=2, col='gray', lwd = 2)
+```
+
+
+
