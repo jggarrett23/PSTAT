@@ -45,6 +45,9 @@ the pharmacy was provided with values of the other variables for that new custom
 ```{r Load in data}
 pharmacy_data <- read.table("pharmacist.txt",header = T)
 
+pharmacy_data$age <- pharmacy_data$age*100
+pharmacy_data$income <- pharmacy_data$income*1000
+
 #inspect first few rows
 head(pharmacy_data)
 
@@ -113,6 +116,17 @@ annotate_figure(int_corr, top =text_grob ("Correlations Between Survey Measures"
 
 Strongest correlations are between pc, ad, and age. These are the ones plotted. Everything else is around the +/- 0.3 range. Ad might be strongest predictor of pc
 
+```{r Compare mean and variance to determine if negative binom a possible random component}
+
+#if mean and variance are the same, then poisson is the possible random. If variance greater, then negative binom is random
+funs <- function(x) { c(mean = mean(x), var=var(x))} 
+descrips <- as.data.frame(sapply(pharmacy_data, funs))
+descrips
+```
+
+Variance > mean of pc and ad, suggesting that the negative binomial might be the best option.
+
+
 # Being Modeling
 
 ## Trying out a poisson model
@@ -158,7 +172,7 @@ Step AIC yielded model without ch2 (fit2), but model did not explain sigificantl
 
 ### Set some variables as factors
 
-```{r}
+```{r Convert to Factors}
 pharmacy_data$sex <- factor(pharmacy_data$sex, labels = c('M','F'))
 pharmacy_data$lp <- factor(pharmacy_data$lp, labels = c('uncovered','covered'))
 pharmacy_data$fp <- factor(pharmacy_data$fp, labels = c('nonprivatePharm','privatePharm'))
@@ -190,6 +204,7 @@ anova(fit2,fit3.2, test = 'Chisq')
 fit4 <- stepAIC(fit1, ~ .^2, direction = 'both', trace = F)
 summary(fit4)
 ```
+
 ```{r}
 anova(fit2,fit4, test = 'Chi')
 ```
@@ -346,6 +361,7 @@ models.BIC <- unlist(lapply(models.list,BIC))
 models.R2 <- unlist(lapply(models.list, function(x) 1-(x$deviance/x$null.deviance)))
 
 model.performance.sumr <- data.frame("Model_Num" = c(1:length(models.list)),
+                                     "Model_Name" = c("fit1","fit3.2","fit4","fit5cv"),
                                      "Formula"=unlist(lapply(models.list,function(x)
                                                             Reduce(paste,deparse(formula(x))))),
                                     "Deviance"=unlist(lapply(models.list,function(x)
@@ -418,6 +434,7 @@ summary(fitnb.2 <- step(fitnb, trace = F, direction='both'))
 ```{r}
 summary(fitnb.3 <- update(fitnb.2, subset = -c(9,292,22)))
 ```
+
 ```{r}
 vif(fitnb.3)
 ```
@@ -445,6 +462,7 @@ new.models.R2 <- unlist(lapply(new.models, function(x) 1-(x$deviance/x$null.devi
 
 new.models.df <- data.frame("Model_Num" = c(max(model.performance.sumr$Model_Num)+1:length(new.models)),
                             "Type" = c('poisson','nB','nB'),
+                            "Model_Name" = c("fit3.3","fitnb.3","fitnb.3.2"),
                                      "Formula"=unlist(lapply(new.models,function(x)
                                                             Reduce(paste,deparse(formula(x))))),
                                     "Deviance"=unlist(lapply(new.models,function(x)
@@ -460,11 +478,41 @@ model.performance.sumr$Type <- rep('poisson',nrow(model.performance.sumr))
 
 model.performance.sumr <- rbind(model.performance.sumr,new.models.df)
 
-model.performance.sumr <- model.performance.sumr[order(model.performance.sumr$BIC),]
+model.performance.sumr <- model.performance.sumr[with(model.performance.sumr,order(-R.2,model.performance.sumr$BIC)),]
 
-model.performance.sumr <- model.performance.sumr[,c('Model_Num','Type','Formula','Deviance',
+model.performance.sumr <- model.performance.sumr[,c('Model_Num','Model_Name','Type','Formula','Deviance',
                                                     'R.2','AIC','BIC','Phi_Tild','Phi_Hat')]
 
 View(model.performance.sumr)
+```
+
+
+# Simulations
+
+```{r}
+n <- 100
+
+# pc = sex + age + fp + fr + ill + ad + hs + ch1
+de.factorDF <- pharmacy_data %>% mutate_if(is.factor,as.numeric)
+
+de.factorDF <- de.factorDF[-c(9,292,22),]
+
+X <- as.data.frame(apply(de.factorDF,2,function(x) sample(min(x):max(x),n, replace = T)))
+
+betas <- coef(fit3.3)[-1]
+
+mu <- exp(coef(fit3.3)[1] + rowSums(sweep(X[,names(fit3.3$model)[-1]], MARGIN = 2, betas, '*')))
+
+# X$sex <- factor(X$sex, labels = c('M','F'))
+# X$lp <- factor(X$lp, labels = c('uncovered','covered'))
+# X$fp <- factor(X$fp, labels = c('nonprivatePharm','privatePharm'))
+# X$fr <- factor(X$fr, labels = c('nonprivate','private'))
+# X$ch1 <- factor(X$ch1, labels = c('nonChronic1','chronicNoLim'))
+# X$ch2 <- factor(X$ch2, labels = c('nonChronic2','chronicLim'))
+
+y <- rpois(n, lambda=mu)
+
+
+summary(glm(y ~ ., data = X[,names(fit3.3$model)[-1]], family = poisson(link=log)))
 ```
 
