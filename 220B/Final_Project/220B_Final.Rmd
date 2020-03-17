@@ -340,11 +340,17 @@ models.list <- list(fit1,fit3.2,fit4,fit5cv)
 models.AIC <- unlist(lapply(models.list,AIC))
 models.BIC <- unlist(lapply(models.list,BIC))
 
+#R^2 is not the same here as it is in the gaussian case. Instead of explaining the amount of variation,
+#it represents the ratio of how close the fit is to being either the perfect or worst model. 
+#SMALLER DEVIANCE MEANS CLOSER TO PERFECT MODEL, thus ratios closer to 1 mean better models
+models.R2 <- unlist(lapply(models.list, function(x) 1-(x$deviance/x$null.deviance)))
+
 model.performance.sumr <- data.frame("Model_Num" = c(1:length(models.list)),
                                      "Formula"=unlist(lapply(models.list,function(x)
                                                             Reduce(paste,deparse(formula(x))))),
                                     "Deviance"=unlist(lapply(models.list,function(x)
-                                                        summary(x)$deviance)), 
+                                                        summary(x)$deviance)),
+                                    "R^2"=models.R2,
                                     "pF"=unlist(lapply(models.list, calcPval)),
                                     "AIC" = models.AIC,"BIC"=models.BIC,
                                     "Phi_Tild" = unlist(lapply(models.list, compute_PhiTil)),
@@ -354,19 +360,111 @@ model.performance.sumr <- model.performance.sumr[order(model.performance.sumr$BI
 View(model.performance.sumr)
 ```
 
-## Choosing pc = sex + age + fp + fr + ill + ad + hs + ch1 based off of BIC
+
+```{r}
+anova(fit3.2,fit4, test = 'Chi')
+```
+
+
+## Choosing pc = sex + age + fp + fr + ill + ad + hs + ch1 based off of BIC, plus multicollinearity is and issue with fit4
 
 ```{r}
 #Final diagnostics
 
 vif(fit3.2) #multicollinearity a non issue
 
-glm.diag.plots(fit3.2)
+par(mfrow = c(2,2))
+plot(fit3.2)
 ```
+
+### Remove high leverage/cooks distance points
 ```{r}
-termplot(fit3.2, data = pharmacy_data, partial.resid = T, col.res = 'black', cex = 1, pch = 1)
+fit3.3 <- update(fit3.2, subset = -c(9,292,430,400))
+```
+
++ Removal of potentially high residual influencers dramatically drops BIC. R^2 ratio barely increases
+
+```{r}
+# see if we can simplify further
+summary(fit3.4 <- step(fit3.3,trace = F, direction = 'both'))
+anova(fit3.4,fit3.3, test = 'Chi')
+```
+
+Anova results indicate that fit3.4 does not have significantly less deviance than more complex 3.3 model. Thus,
+retain 3.3
+
+```{r}
+termplot(fit3.3, data = pharmacy_data, partial.resid = T, col.res = 'black', cex = 1, pch = 1)
 abline(h=0,lty=2, col='gray', lwd = 2)
 ```
 
+```{r}
+fv <- fitted(fit3.3)
+plot(fv, residuals(fit3.3, type = 'response'), xlab = expression(log(hat(mu))),
+     ylab = expression(log(y - hat(mu))^2))
+lines(smooth.spline(fv,residuals(fit3.3, type = 'response')), col = 'red', lwd = 2)
+```
 
+## Test negative binomial model
+
+```{r}
+summary(fitnb <- glm.nb(pc ~ ., data = pharmacy_data))
+```
+
+```{r}
+summary(fitnb.2 <- step(fitnb, trace = F, direction='both'))
+```
+
+```{r}
+summary(fitnb.3 <- update(fitnb.2, subset = -c(9,292,22)))
+```
+```{r}
+vif(fitnb.3)
+```
+
+```{r}
+fv.nb <- fitted(fitnb.3)
+plot(exp(fv.nb), exp(residuals(fitnb.3, type = 'response')), xlab = expression(log(hat(mu))),
+     ylab = expression(log(y - hat(mu))^2))
+lines(smooth.spline(exp(fv.nb),exp(residuals(fitnb.3, type = 'response'))), col = 'red', lwd = 2)
+```
+
++ Need to check if categorical variables are significant, anova comparison between model w/ vs w/o
+  fp is significant
+  ch1 is not significant, can drop term
+
+```{r}
+summary(fitnb.3.2 <- update(fitnb.3, .~.-ch1))
+```
+
+```{r}
+new.models <- list(fit3.3,fitnb.3,fitnb.3.2)
+new.models.BIC <- unlist(lapply(new.models,BIC))
+new.models.AIC <- unlist(lapply(new.models,AIC))
+new.models.R2 <- unlist(lapply(new.models, function(x) 1-(x$deviance/x$null.deviance)))
+
+new.models.df <- data.frame("Model_Num" = c(max(model.performance.sumr$Model_Num)+1:length(new.models)),
+                            "Type" = c('poisson','nB','nB'),
+                                     "Formula"=unlist(lapply(new.models,function(x)
+                                                            Reduce(paste,deparse(formula(x))))),
+                                    "Deviance"=unlist(lapply(new.models,function(x)
+                                                        summary(x)$deviance)),
+                                    "R^2"=new.models.R2,
+                                    "AIC" = new.models.AIC,"BIC"=new.models.BIC,
+                                    "Phi_Tild" = unlist(lapply(new.models, compute_PhiTil)),
+                                    "Phi_Hat" = unlist(lapply(new.models, compute_PhiHat)))
+
+#drop p values comparing to null model, not very helpful here
+model.performance.sumr <- model.performance.sumr[,!names(model.performance.sumr) %in% c('pF')]
+model.performance.sumr$Type <- rep('poisson',nrow(model.performance.sumr))
+
+model.performance.sumr <- rbind(model.performance.sumr,new.models.df)
+
+model.performance.sumr <- model.performance.sumr[order(model.performance.sumr$BIC),]
+
+model.performance.sumr <- model.performance.sumr[,c('Model_Num','Type','Formula','Deviance',
+                                                    'R.2','AIC','BIC','Phi_Tild','Phi_Hat')]
+
+View(model.performance.sumr)
+```
 
