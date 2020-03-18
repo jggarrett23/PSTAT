@@ -38,8 +38,6 @@ variables. As part of this investigation, develop a model for pharmacy managers 
 the expected number of pharmacist consultations by a new customer within a 4 week period, if
 the pharmacy was provided with values of the other variables for that new customer.
 
-+ For the first person in this dataset, use your fitted model to estimate the probability distribution for his/her number of pharmacy consultations within a 4 week period, i.e., estimate the probability that his/her number of pharmacist consultations equals 0,1,2, etc.
-
 + Clearly state and discuss your model(s) and assumptions, and also the limitations of your analysis in the context of this study. Within the discussion section, you may include any questions you would like to ask the people who designed the survey and collected these data
 
 ```{r Load in data}
@@ -402,7 +400,7 @@ fit3.3 <- update(fit3.2, subset = -c(9,292,430,400))
 
 ```{r}
 # see if we can simplify further
-summary(fit3.4 <- step(fit3.3,trace = F, direction = 'both'))
+summary(fit3.4 <- step(fit3.3,trace = F, direction = 'both', k = log(n)))
 anova(fit3.4,fit3.3, test = 'Chi')
 ```
 
@@ -410,15 +408,16 @@ Anova results indicate that fit3.4 does not have significantly less deviance tha
 retain 3.3
 
 ```{r}
-termplot(fit3.3, data = pharmacy_data, partial.resid = T, col.res = 'black', cex = 1, pch = 1)
+termplot(fit3.4, data = pharmacy_data, partial.resid = T, col.res = 'black', cex = 1, pch = 1)
 abline(h=0,lty=2, col='gray', lwd = 2)
 ```
 
 ```{r}
-fv <- fitted(fit3.3)
-plot(fv, residuals(fit3.3, type = 'response'), xlab = expression(log(hat(mu))),
+fv <- fitted(fit3.4)
+#response residuals are y-fitted(y)
+plot(fv, residuals(fit3.4, type = 'response'), xlab = expression(log(hat(mu))),
      ylab = expression(log(y - hat(mu))^2))
-lines(smooth.spline(fv,residuals(fit3.3, type = 'response')), col = 'red', lwd = 2)
+lines(smooth.spline(fv,residuals(fit3.4, type = 'response')), col = 'red', lwd = 2)
 ```
 
 ## Test negative binomial model
@@ -455,14 +454,14 @@ summary(fitnb.3.2 <- update(fitnb.3, .~.-ch1))
 ```
 
 ```{r}
-new.models <- list(fit3.3,fitnb.3,fitnb.3.2)
+new.models <- list(fit3.3,fit3.4, fitnb.3,fitnb.3.2)
 new.models.BIC <- unlist(lapply(new.models,BIC))
 new.models.AIC <- unlist(lapply(new.models,AIC))
 new.models.R2 <- unlist(lapply(new.models, function(x) 1-(x$deviance/x$null.deviance)))
 
 new.models.df <- data.frame("Model_Num" = c(max(model.performance.sumr$Model_Num)+1:length(new.models)),
-                            "Type" = c('poisson','nB','nB'),
-                            "Model_Name" = c("fit3.3","fitnb.3","fitnb.3.2"),
+                            "Type" = c('poisson','poisson','nB','nB'),
+                            "Model_Name" = c("fit3.3","fit3.4","fitnb.3","fitnb.3.2"),
                                      "Formula"=unlist(lapply(new.models,function(x)
                                                             Reduce(paste,deparse(formula(x))))),
                                     "Deviance"=unlist(lapply(new.models,function(x)
@@ -488,31 +487,114 @@ View(model.performance.sumr)
 
 
 # Simulations
+```{r Poisson Simulation}
+n <- 400
 
-```{r}
-n <- 100
 
 # pc = sex + age + fp + fr + ill + ad + hs + ch1
-de.factorDF <- pharmacy_data %>% mutate_if(is.factor,as.numeric)
+de.factorDF <- pharmacy_data[-1] %>% mutate_if(is.factor,as.numeric)
 
-de.factorDF <- de.factorDF[-c(9,292,22),]
+de.factorDF <- de.factorDF[-c(9,292,430,400),]
 
 X <- as.data.frame(apply(de.factorDF,2,function(x) sample(min(x):max(x),n, replace = T)))
 
-betas <- coef(fit3.3)[-1]
+betas <- coef(fit3.4)[-1]
 
-mu <- exp(coef(fit3.3)[1] + rowSums(sweep(X[,names(fit3.3$model)[-1]], MARGIN = 2, betas, '*')))
+#mu <- exp(coef(fit3.3)[1] + rowSums(sweep(X[,names(fit3.4$model)[-1]], MARGIN = 2, betas, '*')))
 
-# X$sex <- factor(X$sex, labels = c('M','F'))
-# X$lp <- factor(X$lp, labels = c('uncovered','covered'))
-# X$fp <- factor(X$fp, labels = c('nonprivatePharm','privatePharm'))
-# X$fr <- factor(X$fr, labels = c('nonprivate','private'))
-# X$ch1 <- factor(X$ch1, labels = c('nonChronic1','chronicNoLim'))
-# X$ch2 <- factor(X$ch2, labels = c('nonChronic2','chronicLim'))
+X[,c('sex','fp','fr','ch1','ch2')] <- apply(X[,c('sex','fp','fr','ch1','ch2')], 2, function(x) x-1)
 
+mu <- exp(coef(fit3.4)[1] + betas[1]*X[,'sex'] + betas[2]*X[,'fp'] + betas[3]*X[,'ill'] +
+            betas[4]*X[,'ad'] + betas[5]*X[,'hs'])
+
+#create to simulate nb later
+mu.nb <- exp(coef(fitnb.3.2)[1] + coef(fitnb.3.2)[2]*X[,'sex'] + coef(fitnb.3.2)[3]*X[,'fp']+
+               coef(fitnb.3.2)[4]*X[,'ill'] + coef(fitnb.3.2)[5]*X[,'ad']+ coef(fitnb.3.2)[6]*X[,'hs'])
+
+set.seed(23)
 y <- rpois(n, lambda=mu)
 
+X$sex <- factor(X$sex, labels = c('M','F'))
+X$lp <- factor(X$lp, labels = c('uncovered','covered'))
+X$fp <- factor(X$fp, labels = c('nonprivatePharm','privatePharm'))
+X$fr <- factor(X$fr, labels = c('nonprivate','private'))
+X$ch1 <- factor(X$ch1, labels = c('nonChronic1','chronicNoLim'))
+X$ch2 <- factor(X$ch2, labels = c('nonChronic2','chronicLim'))
 
-summary(glm(y ~ ., data = X[,names(fit3.3$model)[-1]], family = poisson(link=log)))
+summary(sim <- glm(y ~ ., data = X[,names(fit3.4$model)[-1]], family = poisson(link=log)))
+
+
+sim.fv <- fitted(sim)
+
+par(mfrow=c(2,3))
+plot(sim,which=c(1:6))
+
+par(mfrow=c(2,4))
+termplot(sim, partial.resid=T, col.res = 'black')
 ```
 
+
+```{r NB simulation}
+set.seed(123)
+y.nb <- rnegbin(n,mu.nb,theta = fitnb.3.2$theta)
+
+summary( sim.nb <- glm.nb(y.nb ~ ., data = X[,names(fitnb.3.2$model)[-1]]))
+
+par(mfrow = c(2,3))
+plot(sim.nb, which = c(1:6))
+
+par(mfrow=c(2,4))
+termplot(sim.nb, partial.resid=T, col.res = 'black')
+```
+
+# Predictions
+
++ For the first person in this dataset, use your fitted model to estimate the probability distribution for his/her number of pharmacy consultations within a 4 week period, i.e., estimate the probability that his/her number of pharmacist consultations equals 0,1,2, etc.
+
+```{r Prediction Point Estimates}
+pos.pred <- predict.glm(fit3.4,pharmacy_data[1,-1], type = 'response', se.fit = T)
+nb.pred <- predict.glm(fitnb.3.2, pharmacy_data[1,-1], type = 'response', se.fit = T)
+
+as.data.frame(cbind('pois' = unlist(pos.pred), 'nb'=unlist(nb.pred)))
+```
+
+```{r Prediction Probability distributions}
+set.seed(43)
+
+#get quantiles for plotting
+possiblities <- c(0:3)
+prob.pois <- dpois(possiblities, lambda = pos.pred$fit)
+prob.nb <- dnbinom(possiblities, size = fitnb.3.2$theta, mu = nb.pred$fit)
+
+prob.df <- as.data.frame(cbind(possiblities,prob.pois))
+
+prob.nb.df <- as.data.frame(cbind(possiblities,prob.nb))
+
+
+pois.prob.gg <- ggplot(prob.df, aes(x=factor(possiblities), y = prob.pois, group = 1)) +
+  geom_point(color= 'blue', size = 3, pch = 1) + 
+  geom_col(color = 'black',fill = 'turquoise',alpha = 0.4) +
+  ylim(0,1) +
+  labs(x = 'Pharmacy Consultations (in 4 week period)', 
+       y = 'Estimated Probability', title = 'Estimated Probability Distribution\nFor First Person',
+       subtitle = '(Model: Poiss.)') +
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5, size = 14), 
+                     plot.subtitle = element_text(hjust = 0.5, color = 'red', face = 'italic'))
+
+nb.prob.gg <- ggplot(prob.nb.df, aes(x=factor(possiblities), y = prob.nb, group = 1)) +
+  geom_point(color= 'black', size = 3, pch = 1) + 
+  geom_col(color = 'black',fill = 'green',alpha = 0.4) +
+  ylim(0,1) +
+  labs(x = 'Pharmacy Consultations (in 4 week period)', 
+       y = 'Estimated Probability', title = 'Estimated Probability Distribution\nFor First Person',
+       subtitle = '(Model: Negative Bin.)') +
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5, size = 14), 
+                     plot.subtitle = element_text(hjust = 0.5, color = 'red', face = 'italic'))
+
+ggarrange(pois.prob.gg,nb.prob.gg)
+  
+```
+
+### Prediction slightly better for poisson model. Going with poisson!
+
++ fit3.4. note that fp is nonsignificant, but removing it significantly increases the deviance
