@@ -56,6 +56,29 @@ head(pharmacy_data)
 
 ## EDA
 
+```{r}
+getMode = function(x){
+    ta = table(x)
+    tam = max(ta)
+    if (all(ta == tam))
+         mod = NA
+    else
+         if(is.numeric(x))
+    mod = as.numeric(names(ta)[ta == tam])
+    else
+         mod = names(ta)[ta == tam]
+    return(mod)
+}
+
+means <- apply(pharmacy_data,2,mean)
+mode <- apply(pharmacy_data,2, getMode)
+med <- apply(pharmacy_data,2,median)
+variance <- apply(pharmacy_data,2, function(x) round(var(x),2))
+
+as.data.frame(cbind(means,mode,med,variance))
+```
+
+
 ```{r Kernel Densities, warning=FALSE}
 library(reshape2)
 
@@ -94,19 +117,19 @@ rcorr(as.matrix(pharmacy_data), type = c('pearson'))
 all_corr <- ggcorr(pharmacy_data, geom = "tile", label = T, hjust = .8, size = 5, color = "grey50")
 
 # only plot the interesting correlations between pc, age, ad
-p1 <- ggplot(pharmacy_data, aes(x = pc, y = age)) +
+p1 <- ggplot(pharmacy_data, aes(x = pc, y = ad)) +
   geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'red', alpha = 0.5)+
-  labs(title = 'PC vs Age') + theme_classic() + theme(plot.title = element_text(hjust = 0.5))
+  labs(title = 'pc vs age') + theme_classic() + theme(plot.title = element_text(hjust = 0.5))
+# 
+# p2 <- ggplot(pharmacy_data, aes(x = age, y = fr)) +
+#   geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'green', alpha = 0.5) + 
+#   labs(title = 'age vs fr') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
+# 
+# p3 <- ggplot(pharmacy_data, aes(x = lp, y = fr)) +
+#   geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'blue', alpha = 0.5) +
+#   labs(title = 'lp vs fr') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
 
-p2 <- ggplot(pharmacy_data, aes(x = pc, y = ad)) +
-  geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'green', alpha = 0.5) + 
-  labs(title = 'PC vs Ad') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
-
-p3 <- ggplot(pharmacy_data, aes(x = ad, y = age)) +
-  geom_point() + geom_smooth(method = 'lm', se = F, size = 1.2, color = 'blue', alpha = 0.5) +
-  labs(title = 'Ad vs Age') + theme_classic() +  theme(plot.title = element_text(hjust = 0.5))
-
-int_corr <- ggarrange(all_corr,p1,p2,p3, nrow = 2, ncol = 2)
+int_corr <- ggarrange(all_corr,p1, nrow = 1, ncol = 2)
 
 
 annotate_figure(int_corr, top =text_grob ("Correlations Between Survey Measures", face = "bold", size = 14))
@@ -370,8 +393,6 @@ model.performance.sumr <- data.frame("Model_Num" = c(1:length(models.list)),
                                     "Phi_Tild" = unlist(lapply(models.list, compute_PhiTil)),
                                     "Phi_Hat" = unlist(lapply(models.list, compute_PhiHat)))
 model.performance.sumr <- model.performance.sumr[order(model.performance.sumr$BIC),]
-
-View(model.performance.sumr)
 ```
 
 
@@ -400,7 +421,7 @@ fit3.3 <- update(fit3.2, subset = -c(9,292,430,400))
 
 ```{r}
 # see if we can simplify further
-summary(fit3.4 <- step(fit3.3,trace = F, direction = 'both', k = log(n)))
+summary(fit3.4 <- step(fit3.3,trace = F, direction = 'both', k = log(nobs(fit3.3))))
 anova(fit3.4,fit3.3, test = 'Chi')
 ```
 
@@ -427,7 +448,7 @@ summary(fitnb <- glm.nb(pc ~ ., data = pharmacy_data))
 ```
 
 ```{r}
-summary(fitnb.2 <- step(fitnb, trace = F, direction='both'))
+summary(fitnb.2 <- step(fitnb, trace = F, direction='both', k = log(nobs(fitnb))))
 ```
 
 ```{r}
@@ -447,21 +468,17 @@ lines(smooth.spline(exp(fv.nb),exp(residuals(fitnb.3, type = 'response'))), col 
 
 + Need to check if categorical variables are significant, anova comparison between model w/ vs w/o
   fp is significant
-  ch1 is not significant, can drop term
+
 
 ```{r}
-summary(fitnb.3.2 <- update(fitnb.3, .~.-ch1))
-```
-
-```{r}
-new.models <- list(fit3.3,fit3.4, fitnb.3,fitnb.3.2)
+new.models <- list(fit3.3,fit3.4, fitnb.3)
 new.models.BIC <- unlist(lapply(new.models,BIC))
 new.models.AIC <- unlist(lapply(new.models,AIC))
 new.models.R2 <- unlist(lapply(new.models, function(x) 1-(x$deviance/x$null.deviance)))
 
 new.models.df <- data.frame("Model_Num" = c(max(model.performance.sumr$Model_Num)+1:length(new.models)),
-                            "Type" = c('poisson','poisson','nB','nB'),
-                            "Model_Name" = c("fit3.3","fit3.4","fitnb.3","fitnb.3.2"),
+                            "Type" = c('poisson','poisson','nB'),
+                            "Model_Name" = c("fit3.3","fit3.4","fitnb.3"),
                                      "Formula"=unlist(lapply(new.models,function(x)
                                                             Reduce(paste,deparse(formula(x))))),
                                     "Deviance"=unlist(lapply(new.models,function(x)
@@ -485,11 +502,9 @@ model.performance.sumr <- model.performance.sumr[,c('Model_Num','Model_Name','Ty
 View(model.performance.sumr)
 ```
 
-
 # Simulations
 ```{r Poisson Simulation}
 n <- 400
-
 
 # pc = sex + age + fp + fr + ill + ad + hs + ch1
 de.factorDF <- pharmacy_data[-1] %>% mutate_if(is.factor,as.numeric)
@@ -508,8 +523,8 @@ mu <- exp(coef(fit3.4)[1] + betas[1]*X[,'sex'] + betas[2]*X[,'fp'] + betas[3]*X[
             betas[4]*X[,'ad'] + betas[5]*X[,'hs'])
 
 #create to simulate nb later
-mu.nb <- exp(coef(fitnb.3.2)[1] + coef(fitnb.3.2)[2]*X[,'sex'] + coef(fitnb.3.2)[3]*X[,'fp']+
-               coef(fitnb.3.2)[4]*X[,'ill'] + coef(fitnb.3.2)[5]*X[,'ad']+ coef(fitnb.3.2)[6]*X[,'hs'])
+mu.nb <- exp(coef(fitnb.3)[1] + coef(fitnb.3)[2]*X[,'sex'] + coef(fitnb.3)[3]*X[,'fp']+
+               coef(fitnb.3)[4]*X[,'ill'] + coef(fitnb.3)[5]*X[,'ad'])
 
 set.seed(23)
 y <- rpois(n, lambda=mu)
@@ -536,9 +551,9 @@ termplot(sim, partial.resid=T, col.res = 'black')
 
 ```{r NB simulation}
 set.seed(123)
-y.nb <- rnegbin(n,mu.nb,theta = fitnb.3.2$theta)
+y.nb <- rnegbin(n,mu.nb,theta = fitnb.3$theta)
 
-summary( sim.nb <- glm.nb(y.nb ~ ., data = X[,names(fitnb.3.2$model)[-1]]))
+summary( sim.nb <- glm.nb(y.nb ~ ., data = X[,names(fitnb.3$model)[-1]]))
 
 par(mfrow = c(2,3))
 plot(sim.nb, which = c(1:6))
@@ -553,7 +568,7 @@ termplot(sim.nb, partial.resid=T, col.res = 'black')
 
 ```{r Prediction Point Estimates}
 pos.pred <- predict.glm(fit3.4,pharmacy_data[1,-1], type = 'response', se.fit = T)
-nb.pred <- predict.glm(fitnb.3.2, pharmacy_data[1,-1], type = 'response', se.fit = T)
+nb.pred <- predict.glm(fitnb.3, pharmacy_data[1,-1], type = 'response', se.fit = T)
 
 as.data.frame(cbind('pois' = unlist(pos.pred), 'nb'=unlist(nb.pred)))
 ```
@@ -564,7 +579,7 @@ set.seed(43)
 #get quantiles for plotting
 possiblities <- c(0:3)
 prob.pois <- dpois(possiblities, lambda = pos.pred$fit)
-prob.nb <- dnbinom(possiblities, size = fitnb.3.2$theta, mu = nb.pred$fit)
+prob.nb <- dnbinom(possiblities, size = fitnb.3$theta, mu = nb.pred$fit)
 
 prob.df <- as.data.frame(cbind(possiblities,prob.pois))
 
@@ -577,7 +592,7 @@ pois.prob.gg <- ggplot(prob.df, aes(x=factor(possiblities), y = prob.pois, group
   ylim(0,1) +
   labs(x = 'Pharmacy Consultations (in 4 week period)', 
        y = 'Estimated Probability', title = 'Estimated Probability Distribution\nFor First Person',
-       subtitle = '(Model: Poiss.)') +
+       subtitle = '(Model 2: Poiss.)') +
   theme_bw() + theme(plot.title = element_text(hjust = 0.5, size = 14), 
                      plot.subtitle = element_text(hjust = 0.5, color = 'red', face = 'italic'))
 
@@ -587,7 +602,7 @@ nb.prob.gg <- ggplot(prob.nb.df, aes(x=factor(possiblities), y = prob.nb, group 
   ylim(0,1) +
   labs(x = 'Pharmacy Consultations (in 4 week period)', 
        y = 'Estimated Probability', title = 'Estimated Probability Distribution\nFor First Person',
-       subtitle = '(Model: Negative Bin.)') +
+       subtitle = '(Model 4: Negative Bin.)') +
   theme_bw() + theme(plot.title = element_text(hjust = 0.5, size = 14), 
                      plot.subtitle = element_text(hjust = 0.5, color = 'red', face = 'italic'))
 
@@ -598,3 +613,48 @@ ggarrange(pois.prob.gg,nb.prob.gg)
 ### Prediction slightly better for poisson model. Going with poisson!
 
 + fit3.4. note that fp is nonsignificant, but removing it significantly increases the deviance
+
+
+```{r Test Quassi-Poisson for shits and giggle}
+summary(fit.qp <- glm(pc ~ ., data = pharmacy_data, family = 'quasipoisson'))
+```
+
+```{r}
+summary(fit.qp2 <- update(fit.qp, . ~ . -ch2 -fp -income -lp))
+```
+
+```{r}
+anova(fit.qp2,fit.qp, test = 'Chi')
+```
+
+```{r}
+fit.qp3 <- update(fit.qp2, subset = -c(9,292,400))
+
+par(mfrow=c(2,3))
+plot(fit.qp3, which = c(1:6))
+
+par(mfrow=c(2,4))
+termplot(fit.qp3, partial.resid=T, col.res = 'black')
+```
+
+No added benefits from quasi-poisson model
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(fit3.2, which=c(1,5))
+plot(fitnb.2, which = c(1,5))
+```
+
+
+```{r}
+for (i in c(2:6)){
+  for (j in c(2:6)){
+    if (i != j){
+      print(cat(paste(names(coef(fit3.4))[i],'vs',names(coef(fit3.4)[j]),'\n')))
+      print(wald.test(vcov(fit3.4), coef(fit3.4), Terms = c(i,j)))
+    }
+  }
+}
+```
+
